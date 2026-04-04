@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Claude Triangulation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <style>
     /* ── Reset ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -72,9 +73,7 @@
     [data-theme="sun"] input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; box-shadow: none; }
     [data-theme="sun"] input[type="range"]::-moz-range-thumb     { width: 24px; height: 24px; }
     [data-theme="sun"] .logo               { box-shadow: none; background: linear-gradient(135deg, #0369a1, #38bdf8); }
-    [data-theme="sun"] .op1-card .card-title .dot,
-    [data-theme="sun"] .op2-card .card-title .dot,
-    [data-theme="sun"] .op3-card .card-title .dot { box-shadow: none; }
+    [data-theme="sun"] .obs-card .card-title .obs-dot { box-shadow: none !important; }
     [data-theme="sun"] .status-dot.live    { box-shadow: none; }
 
     /* ── Base ── */
@@ -144,13 +143,9 @@
       flex-shrink: 0;
     }
 
-    /* ── Observer card accents ── */
-    .op1-card { border-left: 3px solid var(--op1); }
-    .op2-card { border-left: 3px solid var(--op2); }
-    .op3-card { border-left: 3px solid var(--op3); }
-    .op1-card .card-title .dot { background: var(--op1); box-shadow: 0 0 6px var(--op1); }
-    .op2-card .card-title .dot { background: var(--op2); box-shadow: 0 0 6px var(--op2); }
-    .op3-card .card-title .dot { background: var(--op3); box-shadow: 0 0 6px var(--op3); }
+    /* ── Observer card accents (color set via JS inline styles) ── */
+    .obs-card { border-left: 3px solid transparent; }
+    [data-theme="sun"] .obs-card { border-left-width: 3px; }
 
     /* ── Form elements ── */
     .field { display: flex; flex-direction: column; gap: 5px; }
@@ -367,6 +362,122 @@
     }
     .status-dot.live { background: var(--success); box-shadow: 0 0 6px var(--success); }
 
+    /* ── Toggle switch ── */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .toggle-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      cursor: pointer;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .toggle-pill {
+      display: inline-block;
+      width: 34px; height: 18px;
+      background: var(--border2);
+      border-radius: 9px;
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .toggle-pill::after {
+      content: '';
+      position: absolute;
+      width: 12px; height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      top: 3px; left: 3px;
+      transition: transform 0.2s;
+    }
+    .obs-enabled:checked + .toggle-pill { background: var(--success); }
+    .obs-enabled:checked + .toggle-pill::after { transform: translateX(16px); }
+    [data-theme="sun"] .toggle-pill { width: 38px; height: 22px; border-radius: 11px; }
+    [data-theme="sun"] .toggle-pill::after { width: 14px; height: 14px; }
+    [data-theme="sun"] .obs-enabled:checked + .toggle-pill::after { transform: translateX(16px); }
+
+    /* ── Delete button (inside card title) ── */
+    .obs-delete {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1.15rem;
+      line-height: 1;
+      padding: 1px 5px;
+      border-radius: 5px;
+      margin-left: 4px;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+    }
+    .obs-delete:hover { color: var(--danger); background: rgba(248,113,113,0.12); }
+    [data-theme="sun"] .obs-delete:hover { background: rgba(185,28,28,0.10); }
+
+    /* ── Disabled observation card ── */
+    .obs-card.obs-disabled {
+      opacity: 0.38;
+      transition: opacity 0.2s;
+    }
+    .obs-card.obs-disabled .obs-dot {
+      background: var(--border2) !important;
+      box-shadow: none !important;
+    }
+
+    /* ── Add Observation button ── */
+    .btn-add-obs {
+      background: transparent;
+      border: 1px dashed var(--border2);
+      color: var(--accent);
+      padding: 11px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-family: inherit;
+      width: 100%;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .btn-add-obs:hover {
+      border-color: var(--accent);
+      background: rgba(56,189,248,0.05);
+    }
+    [data-theme="sun"] .btn-add-obs {
+      border-width: 2px;
+      min-height: 48px;
+      font-size: 0.88rem;
+    }
+
+    /* ── Observation count badge ── */
+    .obs-count {
+      font-size: 0.73rem;
+      color: var(--muted);
+      margin-left: auto;
+      margin-right: 6px;
+      white-space: nowrap;
+    }
+
+    /* ── Min observations warning ── */
+    #minObsWarning {
+      background: var(--gdop-bg);
+      border: 1px solid var(--gdop-bdr);
+      border-left: 4px solid var(--warn);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 12px;
+      font-size: 0.875rem;
+    }
+    #minObsWarning .wi { font-size: 1.2rem; flex-shrink: 0; padding-top: 1px; }
+    #minObsWarning strong { color: var(--warn); }
+
     /* ── GPS Button ── */
     .gps-btn {
       background: transparent;
@@ -430,6 +541,51 @@
 
     /* ── Spin animation (used during GPS acquire) ── */
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Leaflet map container ── */
+    #mapDiagram {
+      height: 420px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      position: relative;
+      z-index: 0;   /* keeps Leaflet controls below our sticky header */
+    }
+    [data-theme="sun"] #mapDiagram { border-width: 2px; }
+
+    /* ── Leaflet observer / target tooltip labels ── */
+    .leaflet-tooltip.map-label {
+      background: rgba(8, 14, 28, 0.75);
+      border: none;
+      border-radius: 4px;
+      box-shadow: none;
+      color: #dce8f4;
+      font-family: 'SF Mono', 'Fira Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      white-space: nowrap;
+    }
+    .leaflet-tooltip.map-label::before { display: none; }
+    .leaflet-tooltip.map-target-label  { color: #f87171; }
+
+    [data-theme="sun"] .leaflet-tooltip.map-label {
+      background: rgba(255, 255, 255, 0.88);
+      color: #060e1c;
+    }
+    [data-theme="sun"] .leaflet-tooltip.map-target-label { color: #b91c1c; }
+
+    /* ── Leaflet attribution — keep readable in both themes ── */
+    .leaflet-control-attribution {
+      background: rgba(8, 14, 28, 0.65) !important;
+      color: #7a93af !important;
+    }
+    .leaflet-control-attribution a { color: #38bdf8 !important; }
+    [data-theme="sun"] .leaflet-control-attribution {
+      background: rgba(255, 255, 255, 0.75) !important;
+      color: #2a4560 !important;
+    }
+    [data-theme="sun"] .leaflet-control-attribution a { color: #0369a1 !important; }
   </style>
 </head>
 <body>
@@ -479,115 +635,26 @@
     </div>
   </div>
 
-  <!-- ── Observer 1 ── -->
-  <section class="card op1-card">
-    <div class="card-title"><span class="dot"></span>Observer 1</div>
-    <div class="form-stack">
-      <div class="field">
-        <label>Label (optional)</label>
-        <input type="text" class="obs-label" placeholder="OP-1" maxlength="10" data-obs="0">
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label>Latitude</label>
-          <input type="number" class="obs-lat" step="0.0001" placeholder="e.g. 47.6062" min="-90" max="90" data-obs="0">
-          <span class="hint">−90 to 90</span>
-        </div>
-        <div class="field">
-          <label>Longitude</label>
-          <input type="number" class="obs-lon" step="0.0001" placeholder="e.g. −122.332" min="-180" max="180" data-obs="0">
-          <span class="hint">−180 to 180</span>
-        </div>
-      </div>
-      <div class="field">
-        <button class="gps-btn" id="gpsBtn0" type="button">📍 Use My Location</button>
-        <span class="gps-accuracy hidden" id="gpsAcc0"></span>
-      </div>
-      <div class="field">
-        <label>Magnetic Bearing</label>
-        <div class="input-unit">
-          <input type="number" class="obs-bearing" step="0.1" placeholder="0 – 359.9" min="0" max="359.9" data-obs="0">
-          <span class="unit-badge">° mag</span>
-        </div>
-        <span class="hint">Compass reading toward the signal source</span>
-      </div>
-    </div>
-  </section>
+  <!-- ── Observer cards (rendered by JS) ── -->
+  <div id="obsContainer"></div>
 
-  <!-- ── Observer 2 ── -->
-  <section class="card op2-card">
-    <div class="card-title"><span class="dot"></span>Observer 2</div>
-    <div class="form-stack">
-      <div class="field">
-        <label>Label (optional)</label>
-        <input type="text" class="obs-label" placeholder="OP-2" maxlength="10" data-obs="1">
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label>Latitude</label>
-          <input type="number" class="obs-lat" step="0.0001" placeholder="e.g. 47.6062" min="-90" max="90" data-obs="1">
-          <span class="hint">−90 to 90</span>
-        </div>
-        <div class="field">
-          <label>Longitude</label>
-          <input type="number" class="obs-lon" step="0.0001" placeholder="e.g. −122.332" min="-180" max="180" data-obs="1">
-          <span class="hint">−180 to 180</span>
-        </div>
-      </div>
-      <div class="field">
-        <button class="gps-btn" id="gpsBtn1" type="button">📍 Use My Location</button>
-        <span class="gps-accuracy hidden" id="gpsAcc1"></span>
-      </div>
-      <div class="field">
-        <label>Magnetic Bearing</label>
-        <div class="input-unit">
-          <input type="number" class="obs-bearing" step="0.1" placeholder="0 – 359.9" min="0" max="359.9" data-obs="1">
-          <span class="unit-badge">° mag</span>
-        </div>
-        <span class="hint">Compass reading toward the signal source</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Observer 3 ── -->
-  <section class="card op3-card">
-    <div class="card-title"><span class="dot"></span>Observer 3</div>
-    <div class="form-stack">
-      <div class="field">
-        <label>Label (optional)</label>
-        <input type="text" class="obs-label" placeholder="OP-3" maxlength="10" data-obs="2">
-      </div>
-      <div class="two-col">
-        <div class="field">
-          <label>Latitude</label>
-          <input type="number" class="obs-lat" step="0.0001" placeholder="e.g. 47.6062" min="-90" max="90" data-obs="2">
-          <span class="hint">−90 to 90</span>
-        </div>
-        <div class="field">
-          <label>Longitude</label>
-          <input type="number" class="obs-lon" step="0.0001" placeholder="e.g. −122.332" min="-180" max="180" data-obs="2">
-          <span class="hint">−180 to 180</span>
-        </div>
-      </div>
-      <div class="field">
-        <button class="gps-btn" id="gpsBtn2" type="button">📍 Use My Location</button>
-        <span class="gps-accuracy hidden" id="gpsAcc2"></span>
-      </div>
-      <div class="field">
-        <label>Magnetic Bearing</label>
-        <div class="input-unit">
-          <input type="number" class="obs-bearing" step="0.1" placeholder="0 – 359.9" min="0" max="359.9" data-obs="2">
-          <span class="unit-badge">° mag</span>
-        </div>
-        <span class="hint">Compass reading toward the signal source</span>
-      </div>
-    </div>
-  </section>
+  <!-- ── Add Observation button ── -->
+  <button id="addObsBtn" class="btn-add-obs" type="button">+ Add Observation</button>
 
   <!-- ── Actions ── -->
   <div class="actions">
     <button id="clearBtn" class="btn-ghost">↺&ensp;Clear / Reset</button>
+    <span class="obs-count hidden" id="obsCount"></span>
     <span class="status-dot" id="statusDot" title="Live — recalculates on every input change"></span>
+  </div>
+
+  <!-- ── Not enough observations warning ── -->
+  <div id="minObsWarning" class="hidden">
+    <span class="wi">⚠</span>
+    <div>
+      <strong>Not enough active observations.</strong><br>
+      Enable at least 3 observations to compute a fix.
+    </div>
   </div>
 
   <!-- ── GDOP Warning ── -->
@@ -625,7 +692,11 @@
   <!-- ── Diagram ── -->
   <section id="diagramCard" class="card hidden">
     <div class="card-title">Bearing Fix Diagram</div>
+    <!-- Satellite map (primary, requires network) -->
+    <div id="mapDiagram"></div>
+    <!-- SVG fallback (offline / Leaflet unavailable) -->
     <svg id="svgDiagram"
+         class="hidden"
          viewBox="0 0 580 460"
          preserveAspectRatio="xMidYMid meet"
          role="img"
@@ -635,633 +706,8 @@
 
 </main>
 
-<script>
-// ================================================================
-//  TRIANGULATION ENGINE
-//  Identical math to test_runner.html — keep in sync.
-// ================================================================
-
-const R_EARTH = 6_371_000;
-const GDOP_THRESHOLD = 0.10;
-
-const Engine = {
-  toRad: d => d * Math.PI / 180,
-  toDeg: r => r * 180 / Math.PI,
-
-  toENU(lat, lon, rLat, rLon) {
-    return {
-      E: this.toRad(lon - rLon) * Math.cos(this.toRad(rLat)) * R_EARTH,
-      N: this.toRad(lat - rLat) * R_EARTH
-    };
-  },
-
-  fromENU(E, N, rLat, rLon) {
-    return {
-      lat: rLat + this.toDeg(N / R_EARTH),
-      lon: rLon + this.toDeg(E / (R_EARTH * Math.cos(this.toRad(rLat))))
-    };
-  },
-
-  /** true = magnetic + declination (east positive) */
-  applyDeclination(mag, decl) {
-    return (mag + decl + 720) % 360;
-  },
-
-  /**
-   * Least-squares intersection of 3 bearing lines.
-   * Line through p₀=(E,N) at true bearing θ:  a·P_E + b·P_N = c
-   *   a = cos θ,  b = −sin θ,  c = E·a + N·b
-   */
-  triangulate(obs, bearingErrDeg = 5) {
-    const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
-    const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
-
-    const pts = obs.map(o => {
-      const { E, N } = this.toENU(o.lat, o.lon, rLat, rLon);
-      return { E, N, θ: this.toRad(o.trueBearing) };
-    });
-
-    let sA2=0, sAB=0, sB2=0, sAC=0, sBC=0;
-    const cf = pts.map(p => {
-      const a =  Math.cos(p.θ),  b = -Math.sin(p.θ),  c = p.E*a + p.N*b;
-      sA2+=a*a; sAB+=a*b; sB2+=b*b; sAC+=a*c; sBC+=b*c;
-      return { a, b, c };
-    });
-
-    const det = sA2*sB2 - sAB*sAB;
-    if (det < GDOP_THRESHOLD) return { gdopWarning: true, det };
-
-    const PE = (sAC*sB2 - sBC*sAB) / det;
-    const PN = (sA2*sBC - sAB*sAC) / det;
-
-    const pd = cf.map(({ a, b, c }) => Math.abs(a*PE + b*PN - c));
-    const rms = Math.sqrt(pd.reduce((s, d) => s + d*d, 0) / pd.length);
-    const ad  = pts.reduce((s, p) => s + Math.sqrt((PE-p.E)**2 + (PN-p.N)**2), 0) / pts.length;
-    const er  = Math.sqrt(rms**2 + (this.toRad(bearingErrDeg)*ad)**2);
-
-    const pos = this.fromENU(PE, PN, rLat, rLon);
-    return { lat: pos.lat, lon: pos.lon, errorRadius: er, det, gdopWarning: false };
-  }
-};
-
-
-// ================================================================
-//  FORMATTERS
-// ================================================================
-
-function toDMS(dec, isLon) {
-  const abs = Math.abs(dec);
-  const d   = Math.floor(abs);
-  const mf  = (abs - d) * 60;
-  const m   = Math.floor(mf);
-  const s   = (mf - m) * 60;
-  const dir = isLon ? (dec >= 0 ? 'E' : 'W') : (dec >= 0 ? 'N' : 'S');
-  return `${d}° ${m}′ ${s.toFixed(1)}″ ${dir}`;
-}
-
-function fmtDec(lat, lon) {
-  return `${Math.abs(lat).toFixed(5)}° ${lat >= 0 ? 'N' : 'S'},  `
-       + `${Math.abs(lon).toFixed(5)}° ${lon >= 0 ? 'E' : 'W'}`;
-}
-
-function fmtRadius(m) {
-  if (m < 1000) return `${Math.round(m)} m`;
-  return `${(m / 1000).toFixed(2)} km`;
-}
-
-
-// ================================================================
-//  STORAGE
-// ================================================================
-
-const SK = 'claude-triangulation-v1';
-
-function save() {
-  try {
-    localStorage.setItem(SK, JSON.stringify({
-      decl:  get('declination').value,
-      berr:  get('bearingError').value,
-      obs:   [0,1,2].map(i => ({
-        label:   qsa('.obs-label')[i].value,
-        lat:     qsa('.obs-lat')[i].value,
-        lon:     qsa('.obs-lon')[i].value,
-        bearing: qsa('.obs-bearing')[i].value
-      }))
-    }));
-  } catch (_) {}
-}
-
-function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem(SK) || 'null');
-    if (!s) return;
-    if (s.decl != null) get('declination').value = s.decl;
-    if (s.berr != null) {
-      get('bearingError').value = s.berr;
-      get('bearingErrorLabel').textContent = `±${s.berr}°`;
-    }
-    (s.obs || []).forEach((o, i) => {
-      if (o.label   != null) qsa('.obs-label')[i].value   = o.label;
-      if (o.lat     != null) qsa('.obs-lat')[i].value     = o.lat;
-      if (o.lon     != null) qsa('.obs-lon')[i].value     = o.lon;
-      if (o.bearing != null) qsa('.obs-bearing')[i].value = o.bearing;
-    });
-  } catch (_) {}
-}
-
-function wipe() {
-  try { localStorage.removeItem(SK); } catch (_) {}
-  get('declination').value = 0;
-  get('bearingError').value = 5;
-  get('bearingErrorLabel').textContent = '±5°';
-  qsa('.obs-label, .obs-lat, .obs-lon, .obs-bearing')
-    .forEach(el => { el.value = ''; el.classList.remove('err'); });
-}
-
-
-// ================================================================
-//  INPUT PARSING & VALIDATION
-// ================================================================
-
-function pf(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
-
-function readInputs() {
-  const decl = pf(get('declination').value) ?? 0;
-  const berr = pf(get('bearingError').value) ?? 5;
-  const lats  = qsa('.obs-lat');
-  const lons  = qsa('.obs-lon');
-  const bears = qsa('.obs-bearing');
-  const labs  = qsa('.obs-label');
-
-  const obs = [];
-  let ok = true;
-
-  for (let i = 0; i < 3; i++) {
-    const lat = pf(lats[i].value);
-    const lon = pf(lons[i].value);
-    const mag = pf(bears[i].value);
-
-    const latBad = lat === null || lat < -90  || lat > 90;
-    const lonBad = lon === null || lon < -180 || lon > 180;
-    const magBad = mag === null || mag < 0    || mag > 359.9;
-
-    // Only flag as error if the field has been touched (has a value)
-    lats[i].classList.toggle('err',  lats[i].value  !== '' && latBad);
-    lons[i].classList.toggle('err',  lons[i].value  !== '' && lonBad);
-    bears[i].classList.toggle('err', bears[i].value !== '' && magBad);
-
-    if (latBad || lonBad || magBad) { ok = false; continue; }
-
-    obs.push({
-      lat, lon,
-      trueBearing: Engine.applyDeclination(mag, decl),
-      label: labs[i].value.trim() || `OP-${i+1}`
-    });
-  }
-
-  return ok && obs.length === 3 ? { obs, berr } : null;
-}
-
-
-// ================================================================
-//  SVG DIAGRAM
-// ================================================================
-
-const OBS_COLORS = ['#38bdf8', '#fb923c', '#a78bfa'];
-const SVG_W = 580, SVG_H = 460;
-
-function el(tag, attrs, text) {
-  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  if (text != null) e.textContent = text;
-  return e;
-}
-
-/** Extend a bearing ray from (ox,oy) to the SVG boundary. */
-function rayEnd(ox, oy, bearingDeg) {
-  const dx =  Math.sin(Engine.toRad(bearingDeg));
-  const dy = -Math.cos(Engine.toRad(bearingDeg));   // SVG Y is flipped
-  let t = Infinity;
-  if (Math.abs(dx) > 1e-9) t = Math.min(t, dx > 0 ? (SVG_W - ox)/dx : -ox/dx);
-  if (Math.abs(dy) > 1e-9) t = Math.min(t, dy > 0 ? (SVG_H - oy)/dy : -oy/dy);
-  if (!isFinite(t)) t = 3000;
-  return { x: ox + dx*t, y: oy + dy*t };
-}
-
-function drawDiagram(obs, target, errRadius) {
-  const sun = document.documentElement.dataset.theme === 'sun';
-  const th = sun ? {
-    svgBg:     '#e8eef5', areaBg:  '#ffffff', gridClr: '#c8d8e8',
-    halo:      '#ffffff',  compass: '#3a5a70', scaleFl: '#7a9ab5',
-    legClr:    '#2a4560',  rayOp:   '0.80',   rayW:    '2.5',
-    mkR: 7, xhW: 3,
-    errFill:   'rgba(185,28,28,0.09)', errStroke: '#b91c1c',
-    obsColors: ['#0369a1','#c2410c','#6d28d9'], tgtClr: '#b91c1c',
-  } : {
-    svgBg:     '#080e1c', areaBg:  '#0b1428', gridClr: '#141f35',
-    halo:      '#080e1c', compass: '#5a7a9a', scaleFl: '#3d5570',
-    legClr:    '#7a93af', rayOp:   '0.55',   rayW:    '1.5',
-    mkR: 5.5, xhW: 2,
-    errFill:   'rgba(248,113,113,0.07)', errStroke: '#f87171',
-    obsColors: ['#38bdf8','#fb923c','#a78bfa'], tgtClr: '#f87171',
-  };
-
-  const svg = get('svgDiagram');
-  svg.innerHTML = '';
-
-  // Project to ENU from observers' centroid
-  const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
-  const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
-
-  const oENU = obs.map(o => Engine.toENU(o.lat, o.lon, rLat, rLon));
-  const tENU = Engine.toENU(target.lat, target.lon, rLat, rLon);
-
-  // Bounding box with error padding
-  const eAll = [...oENU.map(p => p.E), tENU.E];
-  const nAll = [...oENU.map(p => p.N), tENU.N];
-  const rawRangeE = Math.max(...eAll) - Math.min(...eAll);
-  const rawRangeN = Math.max(...nAll) - Math.min(...nAll);
-  const errPad = Math.min(errRadius, Math.max(rawRangeE, rawRangeN, 200) * 0.6);
-
-  const domMinE = Math.min(...eAll) - errPad;
-  const domMaxE = Math.max(...eAll) + errPad;
-  const domMinN = Math.min(...nAll) - errPad;
-  const domMaxN = Math.max(...nAll) + errPad;
-
-  const domW = Math.max(domMaxE - domMinE, 200);
-  const domH = Math.max(domMaxN - domMinN, 200);
-
-  // Draw area (leave margins for labels / scale bar / north arrow)
-  const mg = { t: 24, r: 24, b: 52, l: 24 };
-  const dW = SVG_W - mg.l - mg.r;
-  const dH = SVG_H - mg.t - mg.b;
-
-  const scale = Math.min(dW / domW, dH / domH);
-  const usedW = domW * scale;
-  const usedH = domH * scale;
-  const ox0 = mg.l + (dW - usedW) / 2;
-  const oy0 = mg.t + (dH - usedH) / 2;
-
-  // Transform ENU → SVG coords
-  function s(E, N) {
-    return {
-      x: ox0 + (E - domMinE) * scale,
-      y: oy0 + usedH - (N - domMinN) * scale
-    };
-  }
-
-  // ── Background ──
-  svg.appendChild(el('rect', { x:0, y:0, width:SVG_W, height:SVG_H, fill:th.svgBg }));
-
-  // ── Draw area background ──
-  svg.appendChild(el('rect', {
-    x: ox0, y: oy0, width: usedW, height: usedH,
-    fill: th.areaBg, rx: '4'
-  }));
-
-  // ── Subtle grid ──
-  const grid = el('g', { stroke:th.gridClr, 'stroke-width':'0.5' });
-  const GN = 8;
-  for (let i = 0; i <= GN; i++) {
-    const gx = ox0 + (i/GN)*usedW;
-    const gy = oy0 + (i/GN)*usedH;
-    grid.appendChild(el('line', { x1:gx, y1:oy0, x2:gx, y2:oy0+usedH }));
-    grid.appendChild(el('line', { x1:ox0, y1:gy, x2:ox0+usedW, y2:gy }));
-  }
-  svg.appendChild(grid);
-
-  // ── Clip path for bearing rays ──
-  const defs = el('defs', {});
-  const cp = el('clipPath', { id:'drawarea' });
-  cp.appendChild(el('rect', { x: ox0-1, y: oy0-1, width: usedW+2, height: usedH+2 }));
-  defs.appendChild(cp);
-  svg.appendChild(defs);
-
-  // ── Error circle ──
-  const tp = s(tENU.E, tENU.N);
-  const erPx = Math.max(errRadius * scale, 5);
-  svg.appendChild(el('circle', {
-    cx: tp.x, cy: tp.y, r: erPx,
-    fill: th.errFill,
-    stroke: th.errStroke,
-    'stroke-width': sun ? '2' : '1.5',
-    'stroke-dasharray': '6,4'
-  }));
-
-  // ── Bearing rays (clipped to draw area) ──
-  const rayGroup = el('g', { 'clip-path': 'url(#drawarea)' });
-  obs.forEach((o, i) => {
-    const op = s(oENU[i].E, oENU[i].N);
-    const ep = rayEnd(op.x, op.y, o.trueBearing);
-    rayGroup.appendChild(el('line', {
-      x1: op.x, y1: op.y, x2: ep.x, y2: ep.y,
-      stroke: th.obsColors[i % th.obsColors.length],
-      'stroke-width': th.rayW,
-      opacity: th.rayOp,
-      'stroke-dasharray': '7,4'
-    }));
-  });
-  svg.appendChild(rayGroup);
-
-  // ── Observer markers ──
-  obs.forEach((o, i) => {
-    const op = s(oENU[i].E, oENU[i].N);
-    const c = th.obsColors[i % th.obsColors.length];
-    // glow / border ring
-    svg.appendChild(el('circle', { cx:op.x, cy:op.y, r:th.mkR+5, fill:'none', stroke:c, 'stroke-width':'1', opacity: sun ? '0.4' : '0.25' }));
-    // filled dot
-    svg.appendChild(el('circle', { cx:op.x, cy:op.y, r:th.mkR, fill:c }));
-    // label with halo for legibility
-    const lbl = o.label || `OP-${i+1}`;
-    const lx = op.x + th.mkR + 6, ly = op.y - 7;
-    svg.appendChild(el('text', {
-      x:lx, y:ly, fill:c,
-      'font-size': sun ? '13' : '11.5', 'font-family':'monospace', 'font-weight':'bold',
-      'paint-order':'stroke', stroke:th.halo, 'stroke-width': sun ? '4' : '3.5',
-      'stroke-linejoin':'round'
-    }, lbl));
-  });
-
-  // ── Target crosshair ──
-  const CR = sun ? 11 : 9;
-  svg.appendChild(el('circle', { cx:tp.x, cy:tp.y, r:CR+7, fill:'none', stroke:th.tgtClr, 'stroke-width': sun ? '1.5' : '0.8', opacity:'0.4' }));
-  svg.appendChild(el('line',   { x1:tp.x-CR, y1:tp.y, x2:tp.x+CR, y2:tp.y, stroke:th.tgtClr, 'stroke-width':th.xhW }));
-  svg.appendChild(el('line',   { x1:tp.x, y1:tp.y-CR, x2:tp.x, y2:tp.y+CR, stroke:th.tgtClr, 'stroke-width':th.xhW }));
-  svg.appendChild(el('circle', { cx:tp.x, cy:tp.y, r: sun ? 4.5 : 3.5, fill:th.tgtClr }));
-  // "TARGET" label
-  svg.appendChild(el('text', {
-    x: tp.x, y: tp.y + (sun ? 30 : 26),
-    'text-anchor':'middle', fill:th.tgtClr,
-    'font-size': sun ? '11' : '9.5', 'font-family':'monospace', 'font-weight':'bold',
-    'paint-order':'stroke', stroke:th.halo, 'stroke-width': sun ? '4' : '3',
-    opacity:'0.9'
-  }, 'TARGET'));
-
-  // ── North arrow (top-right) ──
-  const nx = SVG_W - 28, ny = 36;
-  svg.appendChild(el('text',    { x:nx, y:ny-14, 'text-anchor':'middle', fill:th.compass, 'font-size':'9.5', 'font-family':'sans-serif', 'font-weight': sun ? 'bold' : 'normal' }, 'N'));
-  svg.appendChild(el('line',    { x1:nx, y1:ny-10, x2:nx, y2:ny+6, stroke:th.compass, 'stroke-width': sun ? '2' : '1.5' }));
-  svg.appendChild(el('polygon', { points:`${nx-4},${ny-4} ${nx},${ny-12} ${nx+4},${ny-4}`, fill:th.compass }));
-
-  // ── Scale bar (bottom-left of draw area) ──
-  const candidates = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000];
-  const mPerPx = 1 / scale;
-  const target80m = 80 * mPerPx;
-  let scaleM = candidates.reduce((b, c) =>
-    Math.abs(c - target80m) < Math.abs(b - target80m) ? c : b
-  );
-  const scalePx = scaleM / mPerPx;
-  const sbX = ox0 + 10, sbY = oy0 + usedH + 26;
-  const barH = sun ? 5 : 4;
-  svg.appendChild(el('rect', { x:sbX, y:sbY-barH/2, width:scalePx, height:barH, fill:th.scaleFl, rx:'2' }));
-  const lbl = scaleM >= 1000 ? `${scaleM/1000} km` : `${scaleM} m`;
-  svg.appendChild(el('text', {
-    x: sbX + scalePx/2, y: sbY + 14,
-    'text-anchor':'middle', fill:th.compass,
-    'font-size': sun ? '11' : '10', 'font-family':'sans-serif', 'font-weight': sun ? 'bold' : 'normal'
-  }, lbl));
-
-  // ── Legend (bottom-right) ──
-  const items = [
-    ...obs.map((o, i) => ({ color: th.obsColors[i % th.obsColors.length], label: o.label || `OP-${i+1}` })),
-    { color: th.tgtClr, label: 'Target' }
-  ];
-  const legX = SVG_W - 90, legY = oy0 + usedH + 14;
-  items.forEach((item, i) => {
-    svg.appendChild(el('circle', { cx:legX+6, cy:legY+i*14, r: sun ? 5 : 4, fill:item.color }));
-    svg.appendChild(el('text', {
-      x:legX+16, y:legY+4+i*14, fill:th.legClr,
-      'font-size': sun ? '11' : '9.5', 'font-family':'sans-serif', 'font-weight': sun ? '600' : 'normal'
-    }, item.label));
-  });
-}
-
-
-// ================================================================
-//  UI CONTROLLER
-// ================================================================
-
-const get = id => document.getElementById(id);
-const qsa = sel => [...document.querySelectorAll(sel)];
-
-function hideAll() {
-  get('gdopWarning').classList.add('hidden');
-  get('resultsCard').classList.add('hidden');
-  get('diagramCard').classList.add('hidden');
-  get('statusDot').classList.remove('live');
-}
-
-function compute() {
-  const parsed = readInputs();
-  save();
-
-  if (!parsed) { hideAll(); return; }
-
-  const { obs, berr } = parsed;
-  const result = Engine.triangulate(obs, berr);
-
-  if (result.gdopWarning) {
-    get('gdopWarning').classList.remove('hidden');
-    get('resultsCard').classList.add('hidden');
-    get('diagramCard').classList.add('hidden');
-    get('statusDot').classList.remove('live');
-    return;
-  }
-
-  // Hide warning, show results
-  get('gdopWarning').classList.add('hidden');
-
-  get('resDecimal').textContent = fmtDec(result.lat, result.lon);
-  get('resDMS').textContent     = `${toDMS(result.lat, false)},  ${toDMS(result.lon, true)}`;
-  get('resRadius').textContent  = fmtRadius(result.errorRadius);
-  get('resultsCard').classList.remove('hidden');
-
-  // Draw diagram
-  drawDiagram(obs, { lat: result.lat, lon: result.lon }, result.errorRadius);
-  get('diagramCard').classList.remove('hidden');
-  get('statusDot').classList.add('live');
-}
-
-
-// ================================================================
-//  GEOLOCATION (GPS AUTO-FILL)
-// ================================================================
-
-/**
- * Returns { supported: true } if the browser can use GPS,
- * or { supported: false, reason: 'no-api' | 'insecure' } otherwise.
- *
- * Uses window.isSecureContext rather than user-agent sniffing.
- * Firefox on Android allows geolocation from file:// (isSecureContext = true).
- * Chrome on Android blocks it for file:// (isSecureContext = false).
- */
-function detectGeoSupport() {
-  if (!('geolocation' in navigator)) return { supported: false, reason: 'no-api' };
-  if (!window.isSecureContext)       return { supported: false, reason: 'insecure' };
-  return { supported: true };
-}
-
-/**
- * Enable or disable all three GPS buttons and show/hide the info banner.
- */
-function setGpsState(supported, reason) {
-  const btns   = [get('gpsBtn0'), get('gpsBtn1'), get('gpsBtn2')];
-  const banner = get('gpsBanner');
-  const detail = get('gpsBannerDetail');
-
-  btns.forEach(b => { b.disabled = !supported; });
-
-  if (supported) {
-    banner.classList.add('hidden');
-    return;
-  }
-
-  if (reason === 'insecure') {
-    detail.innerHTML =
-      'Your browser requires a <strong>secure context (HTTPS)</strong> to access GPS. '
-      + 'On Android, open this file with <strong>Firefox</strong> — '
-      + 'it allows GPS from local HTML files without a server.';
-  } else {
-    detail.innerHTML =
-      'This browser does not support the Geolocation API. '
-      + 'On Android, <strong>Firefox</strong> supports GPS from local HTML files.';
-  }
-  banner.classList.remove('hidden');
-}
-
-/**
- * Fired when a 📍 button is tapped. Acquires GPS, fills lat/lon,
- * shows accuracy badge, triggers recompute. Handles all error cases.
- */
-function handleGpsBtn(idx) {
-  const latEl = qsa('.obs-lat')[idx];
-  const lonEl = qsa('.obs-lon')[idx];
-  const btn   = get(`gpsBtn${idx}`);
-  const accEl = get(`gpsAcc${idx}`);
-
-  // ── Loading state ──
-  btn.disabled = true;
-  btn.innerHTML = '<span style="display:inline-block;animation:spin 0.8s linear infinite">⟳</span>&ensp;Getting location…';
-  accEl.classList.add('hidden');
-
-  navigator.geolocation.getCurrentPosition(
-    // ── Success ──
-    pos => {
-      const { latitude, longitude, accuracy } = pos.coords;
-      latEl.value = latitude.toFixed(6);
-      lonEl.value = longitude.toFixed(6);
-      latEl.classList.remove('err');
-      lonEl.classList.remove('err');
-
-      btn.disabled = false;
-      btn.innerHTML = '📍 Use My Location';
-
-      const accM = Math.round(accuracy);
-      accEl.textContent = `GPS: ±${accM} m`;
-      accEl.className   = 'gps-accuracy' + (accuracy > 50 ? ' warn' : '');
-      accEl.classList.remove('hidden');
-
-      compute();
-    },
-    // ── Error ──
-    err => {
-      btn.disabled = false;
-      btn.innerHTML = '📍 Use My Location';
-
-      let msg;
-      switch (err.code) {
-        case err.PERMISSION_DENIED:
-          msg = 'Location access denied — allow it in browser settings and retry.'; break;
-        case err.POSITION_UNAVAILABLE:
-          msg = 'Location unavailable — check GPS signal and try again.'; break;
-        case err.TIMEOUT:
-          msg = 'GPS timed out — try again.'; break;
-        default:
-          msg = 'GPS error — try again.';
-      }
-      accEl.textContent = `⚠ ${msg}`;
-      accEl.className   = 'gps-accuracy warn';
-      accEl.classList.remove('hidden');
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
-  );
-}
-
-
-// ================================================================
-//  THEME
-// ================================================================
-
-const THEME_KEY = 'claude-tri-theme';
-
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  const btn = get('themeBtn');
-  if (theme === 'sun') {
-    btn.textContent = '☾';
-    btn.title = 'Switch to night mode';
-    btn.setAttribute('aria-label', 'Switch to night mode');
-  } else {
-    btn.textContent = '☀';
-    btn.title = 'Switch to sunlight mode';
-    btn.setAttribute('aria-label', 'Switch to sunlight mode');
-  }
-}
-
-get('themeBtn').addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'sun' ? 'dark' : 'sun';
-  applyTheme(next);
-  try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
-  // Redraw diagram in new theme colours if a fix is already showing
-  if (!get('diagramCard').classList.contains('hidden')) compute();
-});
-
-
-// ================================================================
-//  INIT
-// ================================================================
-
-// Restore theme before anything else renders
-try {
-  const savedTheme = localStorage.getItem(THEME_KEY);
-  if (savedTheme) applyTheme(savedTheme);
-} catch (_) {}
-
-load();
-compute();
-
-// GPS auto-fill setup
-const _geo = detectGeoSupport();
-setGpsState(_geo.supported, _geo.reason);
-[0, 1, 2].forEach(i => {
-  get(`gpsBtn${i}`).addEventListener('click', () => handleGpsBtn(i));
-});
-
-// Bearing error slider
-get('bearingError').addEventListener('input', function () {
-  get('bearingErrorLabel').textContent = `±${this.value}°`;
-  compute();
-});
-
-// All number / text inputs → recompute live
-qsa('input[type="number"], input[type="text"]').forEach(inp => {
-  inp.addEventListener('input', compute);
-});
-
-// Clear / Reset button
-get('clearBtn').addEventListener('click', () => {
-  if (confirm('Clear all observation data and start fresh?')) {
-    wipe();
-    hideAll();
-    // Clear GPS accuracy badges
-    [0, 1, 2].forEach(i => {
-      const acc = get(`gpsAcc${i}`);
-      acc.textContent = '';
-      acc.className = 'gps-accuracy hidden';
-    });
-  }
-});
-</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN2GEMc=" crossorigin=""></script>
+<script src="app.js"></script>
 
 </body>
 </html>
