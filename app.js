@@ -241,9 +241,10 @@ function buildObsCard(obsId, cardNumber) {
     save();
   });
 
-  // GPS button
-  get(`gpsBtn-${obsId}`).addEventListener('click', () => handleGpsBtn(obsId));
-  if (!_geoSupported) get(`gpsBtn-${obsId}`).disabled = true;
+  // GPS button — query within the card, not the document (card isn't in DOM yet)
+  const gpsBtn = section.querySelector('.gps-btn');
+  gpsBtn.addEventListener('click', () => handleGpsBtn(obsId));
+  if (!_geoSupported) gpsBtn.disabled = true;
 
   return section;
 }
