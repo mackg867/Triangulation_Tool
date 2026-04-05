@@ -388,9 +388,37 @@ const Entitlement = {
   deviceId: _generateDeviceId(),
 };
 
+// DEV ONLY: null = use real entitlement; 'free' | 'premium' = forced override.
+// Remove (or keep null) before any public deployment.
+let _devTierOverride = null;
+
 /** Returns true when the user has an active premium entitlement. */
 function isPremium() {
+  if (_devTierOverride !== null) return _devTierOverride === 'premium';
   return DEV_OVERRIDE || Entitlement.tier === 'premium';
+}
+
+/** DEV ONLY: Destroy the current Leaflet map so it reinitialises with
+ *  the correct tile layer when setDevTier() calls compute(). */
+function _destroyMap() {
+  if (_map) {
+    _map.remove();
+    _map    = null;
+    _layers = null;
+  }
+  _tileErrCount = 0;
+  _tilesHealthy = true;
+  _lastDrawArgs = null;
+}
+
+/** DEV ONLY: Switch between 'free' and 'premium' at runtime for testing.
+ *  Call setDevTier(null) to restore real entitlement logic.
+ *  Remove before going live. */
+function setDevTier(tier) {
+  _devTierOverride = tier;   // 'free' | 'premium' | null
+  _destroyMap();
+  applyEntitlementGates();
+  compute();
 }
 
 
@@ -530,7 +558,7 @@ function _refreshAddObsBtn() {
   const locked = !isPremium() && qsa('.obs-card').length >= 3;
   const btn    = get('addObsBtn');
   btn.classList.toggle('btn-add-obs-locked', locked);
-  btn.innerHTML = locked ? '+ Add Observation&ensp;<span class="tier-badge">✦</span>' : '+ Add Observation';
+  btn.textContent = locked ? '+ Add Observation  ✦' : '+ Add Observation';
 }
 
 /** Build and return a new observer card DOM element. */
@@ -1441,3 +1469,23 @@ window.addEventListener('online', () => {
     drawDiagram(..._lastDrawArgs);
   }
 });
+
+// ── DEV ONLY: Tier toggle radio buttons — REMOVE BEFORE GOING LIVE ──────────
+(function initDevPanel() {
+  const freeRadio    = get('devFreeRadio');
+  const premiumRadio = get('devPremiumRadio');
+  if (!freeRadio || !premiumRadio) return;
+
+  // Initialise radio state to match real entitlement
+  if (isPremium()) {
+    premiumRadio.checked = true;
+  } else {
+    freeRadio.checked = true;
+  }
+
+  [freeRadio, premiumRadio].forEach(radio => {
+    radio.addEventListener('change', () => {
+      setDevTier(radio.value);   // 'free' or 'premium'
+    });
+  });
+})();

@@ -308,6 +308,10 @@
     .obs-bia-locked { opacity: 0.35; pointer-events: none; }
     .obs-bia-locked .obs-dot { filter: grayscale(1); }
 
+    /* ── Header action group (upgrade + theme buttons, always flush-right) ── */
+    .header-title { flex: 1; min-width: 0; }
+    .header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
     /* ── Upgrade button (header) ── */
     .upgrade-btn {
       background: linear-gradient(135deg, #92400e, #d97706);
@@ -321,7 +325,6 @@
       letter-spacing: 0.03em;
       cursor: pointer;
       white-space: nowrap;
-      margin-left: auto;
       flex-shrink: 0;
       transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
     }
@@ -703,23 +706,67 @@
       color: #2a4560 !important;
     }
     [data-theme="sun"] .leaflet-control-attribution a { color: #0369a1 !important; }
+
+    /* ── DEV ONLY: Tier toggle panel — remove before going live ── */
+    #devPanel {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 9999;
+      background: #1a0000;
+      border: 2px solid #cc0000;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      font-family: 'SF Mono', 'Fira Mono', monospace;
+      color: #ff8080;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 16px rgba(200,0,0,0.35);
+      user-select: none;
+    }
+    #devPanel .dev-label {
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #ff4444;
+      white-space: nowrap;
+    }
+    #devPanel label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      color: #ffaaaa;
+      font-weight: 600;
+    }
+    #devPanel input[type="radio"] { accent-color: #ff4444; cursor: pointer; }
   </style>
 </head>
 <body>
 
 <header>
   <div class="logo">⊕</div>
-  <div>
+  <div class="header-title">
     <h1>Claude Triangulation</h1>
     <p>RF Signal Location — 3-Point Magnetic Bearing Fix</p>
   </div>
-  <button id="upgradeBtn" class="upgrade-btn" type="button"
-    title="Coming soon — account signup and premium upgrade in a future update"
-    aria-label="Upgrade to Premium">✦ Upgrade</button>
-  <button id="themeBtn" class="theme-btn" title="Switch to sunlight mode" aria-label="Toggle sunlight mode">☀</button>
+  <div class="header-actions">
+    <button id="upgradeBtn" class="upgrade-btn" type="button"
+      title="Coming soon — account signup and premium upgrade in a future update"
+      aria-label="Upgrade to Premium">✦ Upgrade</button>
+    <button id="themeBtn" class="theme-btn" title="Switch to sunlight mode" aria-label="Toggle sunlight mode">☀</button>
+  </div>
 </header>
 
 <main>
+
+  <!-- ══ DEV ONLY: Tier toggle — REMOVE BEFORE GOING LIVE ══ -->
+  <div id="devPanel" aria-label="Dev tier override">
+    <span class="dev-label">⚠ DEV</span>
+    <label><input type="radio" name="devTier" value="free" id="devFreeRadio"> Free</label>
+    <label><input type="radio" name="devTier" value="premium" id="devPremiumRadio"> Premium</label>
+  </div>
 
   <!-- ── Settings ── -->
   <section class="card">
