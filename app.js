@@ -732,8 +732,10 @@ function drawDiagram(obs, target, errRadius) {
   const pad    = errRadius / 111_320;
   bounds.extend([target.lat+pad, target.lon+pad]);
   bounds.extend([target.lat-pad, target.lon-pad]);
-  _map.fitBounds(bounds, { padding:[48,48], maxZoom:17 });
-  setTimeout(() => _map.invalidateSize(), 60);
+  setTimeout(() => {
+    _map.invalidateSize();
+    _map.fitBounds(bounds, { padding:[48,48], maxZoom:17 });
+  }, 60);
 }
 
 
