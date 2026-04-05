@@ -1,6 +1,13 @@
 'use strict';
 
 // ================================================================
+//  DEV OVERRIDE
+//  Set true locally to force premium features on without a backend.
+//  Must be false before any public deployment.
+// ================================================================
+const DEV_OVERRIDE = false;
+
+// ================================================================
 //  HELPERS
 // ================================================================
 const get = id  => document.getElementById(id);
@@ -38,42 +45,353 @@ const Engine = {
     return (mag + decl + 720) % 360;
   },
 
+  // ── Shared internal helpers ──────────────────────────────────────
+
+  /** Build ENU-projected line coefficients for every observation. */
+  _buildLines(obs, rLat, rLon) {
+    return obs.map(o => {
+      const { E, N } = this.toENU(o.lat, o.lon, rLat, rLon);
+      const θ = this.toRad(o.trueBearing);
+      const a = Math.cos(θ), b = -Math.sin(θ);
+      return { E, N, θ, a, b, c: E*a + N*b };
+    });
+  },
+
   /**
-   * Least-squares intersection of N ≥ 3 bearing lines.
-   * Line through p₀=(E,N) at true bearing θ:  a·P_E + b·P_N = c
-   *   a = cos θ,  b = −sin θ,  c = E·a + N·b
+   * Solve weighted normal equations.  Weights are normalised so their
+   * sum equals the number of lines, keeping the determinant comparable
+   * to the GDOP_THRESHOLD regardless of weight scale.
    */
-  triangulate(obs, bearingErrDeg = 5) {
+  _solveWeighted(lines, weights) {
+    const wSum = weights.reduce((s, w) => s + w, 0);
+    if (wSum < 1e-20) return null;
+    const n = lines.length;
+    let sA2=0, sAB=0, sB2=0, sAC=0, sBC=0;
+    lines.forEach((l, i) => {
+      const w = weights[i] / wSum * n;
+      sA2+=w*l.a*l.a; sAB+=w*l.a*l.b; sB2+=w*l.b*l.b;
+      sAC+=w*l.a*l.c; sBC+=w*l.b*l.c;
+    });
+    const det = sA2*sB2 - sAB*sAB;
+    if (det < GDOP_THRESHOLD) return null;
+    return {
+      PE: (sAC*sB2 - sBC*sAB) / det,
+      PN: (sA2*sBC - sAB*sAC) / det,
+      det
+    };
+  },
+
+  /** Perpendicular distance from (PE,PN) to each bearing line. */
+  _perpDists(lines, PE, PN) {
+    return lines.map(l => Math.abs(l.a*PE + l.b*PN - l.c));
+  },
+
+  /** Combined RMS + bearing-uncertainty error radius. */
+  _errorRadius(pd, lines, PE, PN, bearingErrDeg) {
+    const rms = Math.sqrt(pd.reduce((s, d) => s + d*d, 0) / pd.length);
+    const ad  = lines.reduce((s, l) => s + Math.hypot(PE-l.E, PN-l.N), 0) / lines.length;
+    return Math.sqrt(rms**2 + (this.toRad(bearingErrDeg)*ad)**2);
+  },
+
+  // ── Algorithms ──────────────────────────────────────────────────
+
+  /** OLS: closed-form unweighted least-squares (N ≥ 2 lines). */
+  solveOLS(obs, bearingErrDeg = 5) {
     const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
     const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
+    const lines = this._buildLines(obs, rLat, rLon);
+    const sol   = this._solveWeighted(lines, new Array(lines.length).fill(1));
+    if (!sol) return { gdopWarning: true, det: 0 };
+    const { PE, PN, det } = sol;
+    const pd = this._perpDists(lines, PE, PN);
+    const er = this._errorRadius(pd, lines, PE, PN, bearingErrDeg);
+    const pos = this.fromENU(PE, PN, rLat, rLon);
+    return { lat: pos.lat, lon: pos.lon, errorRadius: er, det, gdopWarning: false, algorithmUsed: 'OLS' };
+  },
 
-    const pts = obs.map(o => {
-      const { E, N } = this.toENU(o.lat, o.lon, rLat, rLon);
-      return { E, N, θ: this.toRad(o.trueBearing) };
-    });
+  /** Backward-compatible alias. */
+  triangulate(obs, bearingErrDeg = 5) { return this.solveOLS(obs, bearingErrDeg); },
 
-    let sA2=0, sAB=0, sB2=0, sAC=0, sBC=0;
-    const cf = pts.map(p => {
-      const a =  Math.cos(p.θ),  b = -Math.sin(p.θ),  c = p.E*a + p.N*b;
-      sA2+=a*a; sAB+=a*b; sB2+=b*b; sAC+=a*c; sBC+=b*c;
-      return { a, b, c };
-    });
+  /**
+   * MLE (Lenth's): iterative distance-squared weighting.
+   * Observers closer to the current estimate receive higher weight
+   * because a fixed bearing error produces a smaller perpendicular offset
+   * at short range (w ∝ 1/r²).
+   */
+  solveMLE(obs, bearingErrDeg = 5) {
+    const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
+    const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
+    const lines = this._buildLines(obs, rLat, rLon);
 
-    const det = sA2*sB2 - sAB*sAB;
-    if (det < GDOP_THRESHOLD) return { gdopWarning: true, det };
+    // Seed with OLS
+    const seed = this._solveWeighted(lines, new Array(lines.length).fill(1));
+    if (!seed) return { gdopWarning: true, det: 0 };
 
-    const PE = (sAC*sB2 - sBC*sAB) / det;
-    const PN = (sA2*sBC - sAB*sAC) / det;
+    let PE = seed.PE, PN = seed.PN;
+    const MAX_ITER = 50, THRESH = 0.01; // 1 cm convergence
 
-    const pd = cf.map(({ a, b, c }) => Math.abs(a*PE + b*PN - c));
-    const rms = Math.sqrt(pd.reduce((s, d) => s + d*d, 0) / pd.length);
-    const ad  = pts.reduce((s, p) => s + Math.sqrt((PE-p.E)**2 + (PN-p.N)**2), 0) / pts.length;
-    const er  = Math.sqrt(rms**2 + (this.toRad(bearingErrDeg)*ad)**2);
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      const weights = lines.map(l => {
+        const r2 = (PE - l.E)**2 + (PN - l.N)**2;
+        return 1 / Math.max(r2, 1);   // floor at 1 m² to avoid /0
+      });
+      const sol = this._solveWeighted(lines, weights);
+      if (!sol) return { gdopWarning: true, det: 0 };
+      const δ = Math.hypot(sol.PE - PE, sol.PN - PN);
+      PE = sol.PE; PN = sol.PN;
+      if (δ < THRESH) {
+        const pd = this._perpDists(lines, PE, PN);
+        const er = this._errorRadius(pd, lines, PE, PN, bearingErrDeg);
+        const pos = this.fromENU(PE, PN, rLat, rLon);
+        return { lat: pos.lat, lon: pos.lon, errorRadius: er, det: sol.det,
+                 gdopWarning: false, algorithmUsed: 'MLE', iterations: iter + 1 };
+      }
+    }
+    return { convergeError: true };
+  },
+
+  /**
+   * Huber M-estimator (IRLS): hybrid weighting that down-weights but
+   * does not discard large residuals.  k = 1.345 gives 95% Gaussian efficiency.
+   */
+  solveHuber(obs, bearingErrDeg = 5) {
+    const K = 1.345;
+    const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
+    const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
+    const lines = this._buildLines(obs, rLat, rLon);
+    const seed = this._solveWeighted(lines, new Array(lines.length).fill(1));
+    if (!seed) return { gdopWarning: true, det: 0 };
+
+    let PE = seed.PE, PN = seed.PN, det = seed.det;
+    const MAX_ITER = 50, THRESH = 0.01;
+
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      const pd = this._perpDists(lines, PE, PN);
+      const sorted = [...pd].sort((a, b) => a - b);
+      const σ  = Math.max(sorted[Math.floor(sorted.length / 2)] / 0.6745, 0.1);
+      const weights = pd.map(d => { const r = d / σ; return r <= K ? 1 : K / r; });
+      const sol = this._solveWeighted(lines, weights);
+      if (!sol) break;
+      const δ = Math.hypot(sol.PE - PE, sol.PN - PN);
+      PE = sol.PE; PN = sol.PN; det = sol.det;
+      if (δ < THRESH) break;
+    }
+    const pd = this._perpDists(lines, PE, PN);
+    const er = this._errorRadius(pd, lines, PE, PN, bearingErrDeg);
+    const pos = this.fromENU(PE, PN, rLat, rLon);
+    return { lat: pos.lat, lon: pos.lon, errorRadius: er, det, gdopWarning: false, algorithmUsed: 'Huber' };
+  },
+
+  /**
+   * Andrews M-estimator (IRLS): sinc weighting that zeroes out extreme
+   * outliers entirely, making the fix immune to badly corrupted bearings.
+   */
+  solveAndrews(obs, bearingErrDeg = 5) {
+    const C = 1.339;
+    const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
+    const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
+    const lines = this._buildLines(obs, rLat, rLon);
+    const seed = this._solveWeighted(lines, new Array(lines.length).fill(1));
+    if (!seed) return { gdopWarning: true, det: 0 };
+
+    let PE = seed.PE, PN = seed.PN, det = seed.det;
+    const MAX_ITER = 50, THRESH = 0.01;
+
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      const pd = this._perpDists(lines, PE, PN);
+      const sorted = [...pd].sort((a, b) => a - b);
+      const σ  = Math.max(sorted[Math.floor(sorted.length / 2)] / 0.6745, 0.1);
+      const weights = pd.map(d => {
+        const r = d / σ;
+        if (Math.abs(r) >= C * Math.PI) return 1e-10;
+        if (Math.abs(r) < 1e-10) return 1;
+        return Math.sin(r / C) / (r / C);
+      });
+      const sol = this._solveWeighted(lines, weights);
+      if (!sol) break;
+      const δ = Math.hypot(sol.PE - PE, sol.PN - PN);
+      PE = sol.PE; PN = sol.PN; det = sol.det;
+      if (δ < THRESH) break;
+    }
+    const pd = this._perpDists(lines, PE, PN);
+    const er = this._errorRadius(pd, lines, PE, PN, bearingErrDeg);
+    const pos = this.fromENU(PE, PN, rLat, rLon);
+    return { lat: pos.lat, lon: pos.lon, errorRadius: er, det, gdopWarning: false, algorithmUsed: 'Andrews' };
+  },
+
+  /** Geometric Centroid: arithmetic mean of all pairwise bearing-line intersections. */
+  solveGeomCentroid(obs, bearingErrDeg = 5) {
+    const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
+    const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
+    const lines = this._buildLines(obs, rLat, rLon);
+    const ipts = [];
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const l1 = lines[i], l2 = lines[j];
+        const d = l1.a * l2.b - l2.a * l1.b;
+        if (Math.abs(d) < 1e-10) continue;
+        ipts.push({
+          E: (l1.c * l2.b - l2.c * l1.b) / d,
+          N: (l1.a * l2.c - l2.a * l1.c) / d
+        });
+      }
+    }
+    if (ipts.length === 0) return { gdopWarning: true, det: 0 };
+
+    const PE = ipts.reduce((s, p) => s + p.E, 0) / ipts.length;
+    const PN = ipts.reduce((s, p) => s + p.N, 0) / ipts.length;
+
+    const pd     = this._perpDists(lines, PE, PN);
+    const spread = Math.sqrt(ipts.reduce((s, p) => s + (p.E-PE)**2 + (p.N-PN)**2, 0) / ipts.length);
+    const er     = Math.max(this._errorRadius(pd, lines, PE, PN, bearingErrDeg), spread);
+    const sol    = this._solveWeighted(lines, new Array(lines.length).fill(1));
+    const pos    = this.fromENU(PE, PN, rLat, rLon);
+    return { lat: pos.lat, lon: pos.lon, errorRadius: er,
+             det: sol ? sol.det : 0, gdopWarning: false, algorithmUsed: 'Geometric Centroid' };
+  },
+
+  /**
+   * Statistical Means: arithmetic / geometric / harmonic mean of the
+   * pairwise intersection cloud.
+   * meanType: 'arithmetic' | 'geometric' | 'harmonic'
+   */
+  solveStatMeans(obs, bearingErrDeg = 5, meanType = 'arithmetic') {
+    const rLat = obs.reduce((s, o) => s + o.lat, 0) / obs.length;
+    const rLon = obs.reduce((s, o) => s + o.lon, 0) / obs.length;
+    const lines = this._buildLines(obs, rLat, rLon);
+    const ipts = [];
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const l1 = lines[i], l2 = lines[j];
+        const d = l1.a * l2.b - l2.a * l1.b;
+        if (Math.abs(d) < 1e-10) continue;
+        ipts.push({
+          E: (l1.c * l2.b - l2.c * l1.b) / d,
+          N: (l1.a * l2.c - l2.a * l1.c) / d
+        });
+      }
+    }
+    if (ipts.length === 0) return { gdopWarning: true, det: 0 };
+
+    let PE, PN;
+    if (meanType === 'geometric') {
+      const sE = Math.abs(Math.min(...ipts.map(p => p.E))) + 1;
+      const sN = Math.abs(Math.min(...ipts.map(p => p.N))) + 1;
+      PE = Math.exp(ipts.reduce((s, p) => s + Math.log(p.E + sE), 0) / ipts.length) - sE;
+      PN = Math.exp(ipts.reduce((s, p) => s + Math.log(p.N + sN), 0) / ipts.length) - sN;
+    } else if (meanType === 'harmonic') {
+      const sInvE = ipts.reduce((s, p) => s + 1 / (p.E || 1e-9), 0);
+      const sInvN = ipts.reduce((s, p) => s + 1 / (p.N || 1e-9), 0);
+      PE = ipts.length / sInvE;
+      PN = ipts.length / sInvN;
+    } else { // arithmetic (default)
+      PE = ipts.reduce((s, p) => s + p.E, 0) / ipts.length;
+      PN = ipts.reduce((s, p) => s + p.N, 0) / ipts.length;
+    }
+
+    const pd  = this._perpDists(lines, PE, PN);
+    const er  = this._errorRadius(pd, lines, PE, PN, bearingErrDeg);
+    const sol = this._solveWeighted(lines, new Array(lines.length).fill(1));
+    const pos = this.fromENU(PE, PN, rLat, rLon);
+    const lbl = { arithmetic: 'Arith. Mean', geometric: 'Geom. Mean', harmonic: 'Harm. Mean' };
+    return { lat: pos.lat, lon: pos.lon, errorRadius: er,
+             det: sol ? sol.det : 0, gdopWarning: false,
+             algorithmUsed: lbl[meanType] || 'Stat. Mean' };
+  },
+
+  /**
+   * Biangulation: exact intersection of exactly 2 bearing lines.
+   * Uncertainty is the max distance from the fix to the four error-polygon
+   * corners produced by ±bearingErr on each line.
+   */
+  solveBiangulation(obs, bearingErrDeg = 5) {
+    if (obs.length !== 2) return { error: 'Biangulation requires exactly 2 active observations.' };
+    const rLat = (obs[0].lat + obs[1].lat) / 2;
+    const rLon = (obs[0].lon + obs[1].lon) / 2;
+    const lines = this._buildLines(obs, rLat, rLon);
+    const l1 = lines[0], l2 = lines[1];
+    const det = l1.a * l2.b - l2.a * l1.b;
+    if (Math.abs(det) < GDOP_THRESHOLD) return { gdopWarning: true, det: Math.abs(det) };
+
+    const PE = (l1.c * l2.b - l2.c * l1.b) / det;
+    const PN = (l1.a * l2.c - l2.a * l1.c) / det;
+
+    // Four corners of the error polygon (±err on each line)
+    const corners = [];
+    for (const s1 of [-1, 1]) {
+      for (const s2 of [-1, 1]) {
+        const t0 = { ...obs[0], trueBearing: obs[0].trueBearing + s1 * bearingErrDeg };
+        const t1 = { ...obs[1], trueBearing: obs[1].trueBearing + s2 * bearingErrDeg };
+        const tl = this._buildLines([t0, t1], rLat, rLon);
+        const d  = tl[0].a * tl[1].b - tl[1].a * tl[0].b;
+        if (Math.abs(d) < 1e-10) continue;
+        corners.push({
+          E: (tl[0].c * tl[1].b - tl[1].c * tl[0].b) / d,
+          N: (tl[0].a * tl[1].c - tl[1].a * tl[0].c) / d
+        });
+      }
+    }
+    const er = corners.length
+      ? Math.max(...corners.map(c => Math.hypot(c.E - PE, c.N - PN)))
+      : this.toRad(bearingErrDeg) * Math.hypot(PE - l1.E, PN - l1.N);
 
     const pos = this.fromENU(PE, PN, rLat, rLon);
-    return { lat: pos.lat, lon: pos.lon, errorRadius: er, det, gdopWarning: false };
+    return { lat: pos.lat, lon: pos.lon, errorRadius: er, det: Math.abs(det),
+             gdopWarning: false, algorithmUsed: 'Biangulation' };
+  },
+
+  /** Route to the correct algorithm. */
+  solve(obs, bearingErrDeg = 5, algorithm = 'mle', meanType = 'arithmetic') {
+    switch (algorithm) {
+      case 'ols':          return this.solveOLS(obs, bearingErrDeg);
+      case 'mle':          return this.solveMLE(obs, bearingErrDeg);
+      case 'huber':        return this.solveHuber(obs, bearingErrDeg);
+      case 'andrews':      return this.solveAndrews(obs, bearingErrDeg);
+      case 'centroid':     return this.solveGeomCentroid(obs, bearingErrDeg);
+      case 'statmeans':    return this.solveStatMeans(obs, bearingErrDeg, meanType);
+      case 'biangulation': return this.solveBiangulation(obs, bearingErrDeg);
+      default:             return this.solveOLS(obs, bearingErrDeg);
+    }
   }
 };
+
+
+// Active algorithm and mean-type (persisted to localStorage)
+let _algorithm = 'mle';
+let _meanType  = 'arithmetic';
+
+
+// ================================================================
+//  ENTITLEMENT
+// ================================================================
+
+/** Generate or retrieve a stable per-device UUID stored in localStorage. */
+function _generateDeviceId() {
+  try {
+    let id = localStorage.getItem('claude-tri-device-id');
+    if (!id) {
+      id = (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem('claude-tri-device-id', id);
+    }
+    return id;
+  } catch (_) { return 'unknown'; }
+}
+
+/**
+ * Runtime entitlement state.
+ * tier:   'free' | 'premium'
+ * source: 'local' | 'server' | 'offline'  (Phase 6 will populate 'server'/'offline')
+ */
+const Entitlement = {
+  tier:     'free',
+  source:   'local',
+  deviceId: _generateDeviceId(),
+};
+
+/** Returns true when the user has an active premium entitlement. */
+function isPremium() {
+  return DEV_OVERRIDE || Entitlement.tier === 'premium';
+}
 
 
 // ================================================================
@@ -167,6 +485,52 @@ function refreshCardControls() {
   } else {
     countEl.classList.add('hidden');
   }
+
+  // Keep the Add Observation button gate in sync as card count changes
+  _refreshAddObsBtn();
+}
+
+/**
+ * Apply or lift premium feature gates based on current entitlement.
+ * Call on page load and whenever entitlement changes (Phase 6+).
+ */
+function applyEntitlementGates() {
+  const premium = isPremium();
+
+  // ── Algorithm selector ──────────────────────────────────────────
+  // Lock premium options for free users; restore them for premium users.
+  get('algorithmSelect').querySelectorAll('option[data-premium]').forEach(opt => {
+    const base = opt.dataset.label;           // clean label stored in data attr
+    opt.textContent = premium ? base : `${base}  ✦`;
+    opt.disabled    = !premium;
+  });
+
+  // If a free user has a premium algorithm active (e.g. from a stale save),
+  // fall back to OLS silently.
+  if (!premium && _algorithm !== 'ols') {
+    _algorithm = 'ols';
+    get('algorithmSelect').value = 'ols';
+    get('meanTypeWrap').classList.add('hidden');
+    applyBiangulationLock(false);
+  }
+
+  // ── Upgrade button visibility ────────────────────────────────────
+  get('upgradeBtn').classList.toggle('hidden', premium);
+
+  // ── Satellite upgrade hint in diagram card ───────────────────────
+  get('satelliteHint').classList.toggle('hidden', premium);
+
+  // ── Add Observation button gate ──────────────────────────────────
+  // (Also handled dynamically in refreshCardControls as card count changes.)
+  _refreshAddObsBtn();
+}
+
+/** Sync the Add Observation button's locked/unlocked appearance. */
+function _refreshAddObsBtn() {
+  const locked = !isPremium() && qsa('.obs-card').length >= 3;
+  const btn    = get('addObsBtn');
+  btn.classList.toggle('btn-add-obs-locked', locked);
+  btn.innerHTML = locked ? '+ Add Observation&ensp;<span class="tier-badge">✦</span>' : '+ Add Observation';
 }
 
 /** Build and return a new observer card DOM element. */
@@ -269,12 +633,35 @@ function addObsCard(opts = {}) {
   container.appendChild(card);
   refreshCards();
   refreshCardControls();
+  if (_algorithm === 'biangulation') applyBiangulationLock(true);
   return card;
 }
 
 /** Create the initial 3 cards on page load. */
 function initObsCards() {
   for (let i = 0; i < 3; i++) addObsCard();
+}
+
+/**
+ * Lock/unlock observer cards beyond index 1 for biangulation mode.
+ * Locked cards are greyed out and excluded from readInputs(); their
+ * data is preserved so unlocking restores the session intact.
+ */
+function applyBiangulationLock(active) {
+  qsa('.obs-card').forEach((card, i) => {
+    if (active && i >= 2) {
+      if (!card.hasAttribute('data-bia-locked')) {
+        card.setAttribute('data-bia-locked', '1');
+        card.classList.add('obs-bia-locked', 'obs-disabled');
+      }
+    } else if (!active && card.hasAttribute('data-bia-locked')) {
+      card.removeAttribute('data-bia-locked');
+      card.classList.remove('obs-bia-locked');
+      const enabled = card.querySelector('.obs-enabled').checked;
+      card.classList.toggle('obs-disabled', !enabled);
+    }
+  });
+  refreshCards();
 }
 
 
@@ -287,8 +674,10 @@ const SK = 'claude-triangulation-v2';
 function save() {
   try {
     localStorage.setItem(SK, JSON.stringify({
-      decl: get('declination').value,
-      berr: get('bearingError').value,
+      decl:      get('declination').value,
+      berr:      get('bearingError').value,
+      algorithm: _algorithm,
+      meanType:  _meanType,
       obs: qsa('.obs-card').map(card => ({
         label:   card.querySelector('.obs-label').value,
         lat:     card.querySelector('.obs-lat').value,
@@ -309,6 +698,15 @@ function load() {
     if (s.berr != null) {
       get('bearingError').value = s.berr;
       get('bearingErrorLabel').textContent = `±${s.berr}°`;
+    }
+    if (s.algorithm) {
+      _algorithm = s.algorithm;
+      get('algorithmSelect').value = s.algorithm;
+      get('meanTypeWrap').classList.toggle('hidden', s.algorithm !== 'statmeans');
+    }
+    if (s.meanType) {
+      _meanType = s.meanType;
+      get('meanTypeSelect').value = s.meanType;
     }
 
     const savedObs = s.obs || [];
@@ -335,6 +733,7 @@ function load() {
 
     refreshCards();
     refreshCardControls();
+    if (_algorithm === 'biangulation') applyBiangulationLock(true);
   } catch (_) {}
 }
 
@@ -358,8 +757,17 @@ function wipe() {
   get('bearingError').value = 5;
   get('bearingErrorLabel').textContent = '±5°';
 
+  // Reset algorithm to default (OLS for free, MLE for premium)
+  applyBiangulationLock(false);
+  _algorithm = isPremium() ? 'mle' : 'ols';
+  _meanType  = 'arithmetic';
+  get('algorithmSelect').value  = _algorithm;
+  get('meanTypeSelect').value   = 'arithmetic';
+  get('meanTypeWrap').classList.add('hidden');
+
   refreshCards();
   refreshCardControls();
+  applyEntitlementGates();
 }
 
 
@@ -370,12 +778,16 @@ function wipe() {
 function pf(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
 
 /**
- * Returns the count of observations that are currently active
- * (enabled toggle, or all cards when ≤ 3 total since toggles are hidden).
+ * Returns the count of observations that are currently active.
+ * In biangulation mode, counts non-locked cards (ignores toggle state).
+ * Otherwise uses toggle state when toggles are visible (4+ cards), else all cards.
  */
 function activeObsCount() {
   const cards = qsa('.obs-card');
-  if (cards.length <= 3) return cards.length;   // toggles hidden — all implicitly active
+  if (_algorithm === 'biangulation') {
+    return cards.filter(c => !c.hasAttribute('data-bia-locked')).length;
+  }
+  if (cards.length <= 3) return cards.length;
   return cards.filter(c => c.querySelector('.obs-enabled').checked).length;
 }
 
@@ -387,10 +799,13 @@ function readInputs() {
 
   const obs = [];
   let allValid = true;
+  const isBiaMode = _algorithm === 'biangulation';
 
   cards.forEach((card, cardIndex) => {
-    // Skip disabled cards (when toggles are shown)
-    if (useToggles && !card.querySelector('.obs-enabled').checked) return;
+    // Skip biangulation-locked cards always
+    if (card.hasAttribute('data-bia-locked')) return;
+    // Skip user-disabled cards in normal mode (when toggles are visible)
+    if (!isBiaMode && useToggles && !card.querySelector('.obs-enabled').checked) return;
 
     const latEl  = card.querySelector('.obs-lat');
     const lonEl  = card.querySelector('.obs-lon');
@@ -418,7 +833,8 @@ function readInputs() {
     });
   });
 
-  return allValid && obs.length >= 3 ? { obs, berr } : null;
+  const minObs = isBiaMode ? 2 : 3;
+  return allValid && obs.length >= minObs ? { obs, berr } : null;
 }
 
 
@@ -642,13 +1058,16 @@ function _initMap() {
   _map    = L.map('mapDiagram', { zoomControl: true, preferCanvas: true });
   _layers = L.layerGroup().addTo(_map);
 
-  const tiles = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    {
-      attribution: '&copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> &mdash; Esri, USDA, USGS, AEX, GeoEye',
-      maxZoom: 19,
-    }
-  ).addTo(_map);
+  // Phase 6: if entitlement changes mid-session, destroy and recreate the map
+  // so the tile layer updates. For now the tier is fixed at load time.
+  const tileUrl   = isPremium()
+    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const tileAttrib = isPremium()
+    ? '&copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> &mdash; Esri, USDA, USGS, AEX, GeoEye'
+    : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+
+  const tiles = L.tileLayer(tileUrl, { attribution: tileAttrib, maxZoom: 19 }).addTo(_map);
 
   tiles.on('tileerror', () => {
     _tileErrCount++;
@@ -746,17 +1165,24 @@ function drawDiagram(obs, target, errRadius) {
 function hideAll() {
   get('minObsWarning').classList.add('hidden');
   get('gdopWarning').classList.add('hidden');
+  get('algoError').classList.add('hidden');
   get('resultsCard').classList.add('hidden');
   get('diagramCard').classList.add('hidden');
   get('statusDot').classList.remove('live');
 }
 
 function compute() {
-  // Check whether enough observations are active before validating fields
-  const active = activeObsCount();
-  if (active < 3) {
+  const isBia    = _algorithm === 'biangulation';
+  const minObs   = isBia ? 2 : 3;
+  const active   = activeObsCount();
+
+  if (active < minObs) {
     hideAll();
-    get('minObsWarning').classList.remove('hidden');
+    const warn = get('minObsWarning');
+    warn.querySelector('div').innerHTML = isBia
+      ? '<strong>Not enough active observations.</strong><br>Enable 2 observations to compute a biangulation fix.'
+      : '<strong>Not enough active observations.</strong><br>Enable at least 3 observations to compute a fix.';
+    warn.classList.remove('hidden');
     return;
   }
   get('minObsWarning').classList.add('hidden');
@@ -767,7 +1193,37 @@ function compute() {
   if (!parsed) { hideAll(); return; }
 
   const { obs, berr } = parsed;
-  const result = Engine.triangulate(obs, berr);
+
+  // Safety guard: biangulation strictly requires 2
+  if (isBia && obs.length !== 2) {
+    hideAll();
+    get('algoError').classList.remove('hidden');
+    get('algoErrorMsg').innerHTML =
+      '<strong>Biangulation requires exactly 2 active observations.</strong><br>'
+      + 'Disable extra observations or switch to a different algorithm.';
+    return;
+  }
+
+  const result = Engine.solve(obs, berr, _algorithm, _meanType);
+
+  get('algoError').classList.add('hidden');
+
+  if (result.convergeError) {
+    hideAll();
+    get('algoError').classList.remove('hidden');
+    get('algoErrorMsg').innerHTML =
+      '<strong>MLE did not converge with the current geometry.</strong><br>'
+      + 'The bearing lines may be too nearly parallel or the fix geometry too irregular. '
+      + 'Try <em>Huber</em>, <em>Andrews</em>, or <em>Geometric Centroid</em> instead.';
+    return;
+  }
+
+  if (result.error) {
+    hideAll();
+    get('algoError').classList.remove('hidden');
+    get('algoErrorMsg').innerHTML = `<strong>Algorithm error:</strong> ${result.error}`;
+    return;
+  }
 
   if (result.gdopWarning) {
     get('gdopWarning').classList.remove('hidden');
@@ -781,8 +1237,12 @@ function compute() {
   get('resDecimal').textContent = fmtDec(result.lat, result.lon);
   get('resDMS').textContent     = `${toDMS(result.lat, false)},  ${toDMS(result.lon, true)}`;
   get('resRadius').textContent  = fmtRadius(result.errorRadius);
-  get('resultsCard').classList.remove('hidden');
 
+  let badge = result.algorithmUsed || _algorithm.toUpperCase();
+  if (result.iterations != null) badge += ` · ${result.iterations} iter`;
+  get('algoBadge').textContent = `Algorithm: ${badge}`;
+
+  get('resultsCard').classList.remove('hidden');
   drawDiagram(obs, { lat: result.lat, lon: result.lon }, result.errorRadius);
   get('diagramCard').classList.remove('hidden');
   get('statusDot').classList.add('live');
@@ -906,6 +1366,10 @@ initObsCards();
 
 // Restore previous session
 load();
+
+// Apply premium/free gates (must run after load so saved algorithm is known)
+applyEntitlementGates();
+
 compute();
 
 // GPS setup
@@ -914,6 +1378,12 @@ setGpsState(_geo.supported, _geo.reason);
 
 // Add Observation button
 get('addObsBtn').addEventListener('click', () => {
+  // Free users are capped at 3 observation cards
+  if (!isPremium() && qsa('.obs-card').length >= 3) {
+    get('upgradeBtn').classList.add('upgrade-btn-pulse');
+    setTimeout(() => get('upgradeBtn').classList.remove('upgrade-btn-pulse'), 1200);
+    return;
+  }
   addObsCard();
   compute();
   save();
@@ -923,6 +1393,25 @@ get('addObsBtn').addEventListener('click', () => {
 get('bearingError').addEventListener('input', function () {
   get('bearingErrorLabel').textContent = `±${this.value}°`;
   compute();
+});
+
+// Algorithm selector
+get('algorithmSelect').addEventListener('change', function () {
+  const wasBia = _algorithm === 'biangulation';
+  _algorithm   = this.value;
+  get('meanTypeWrap').classList.toggle('hidden', this.value !== 'statmeans');
+  if (wasBia !== (_algorithm === 'biangulation')) {
+    applyBiangulationLock(_algorithm === 'biangulation');
+  }
+  compute();
+  save();
+});
+
+// Mean-type sub-selector (only visible when algorithm = statmeans)
+get('meanTypeSelect').addEventListener('change', function () {
+  _meanType = this.value;
+  compute();
+  save();
 });
 
 // Settings inputs → live recompute

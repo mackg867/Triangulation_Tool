@@ -265,6 +265,123 @@
     /* ── Hidden ── */
     .hidden { display: none !important; }
 
+    /* ── Select element ── */
+    select {
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 32px 9px 12px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      width: 100%;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%237a93af'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 11px center;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(56,189,248,0.15);
+    }
+    [data-theme="sun"] select { border-width: 2px; padding: 10px 32px 10px 12px; }
+
+    /* ── Algorithm error (MLE non-convergence etc.) ── */
+    #algoError {
+      background: var(--gdop-bg);
+      border: 1px solid var(--gdop-bdr);
+      border-left: 4px solid var(--warn);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 12px;
+      font-size: 0.875rem;
+    }
+    #algoError .wi { font-size: 1.2rem; flex-shrink: 0; padding-top: 1px; }
+    #algoError strong { color: var(--warn); }
+
+    /* ── Biangulation-locked observer cards ── */
+    .obs-bia-locked { opacity: 0.35; pointer-events: none; }
+    .obs-bia-locked .obs-dot { filter: grayscale(1); }
+
+    /* ── Upgrade button (header) ── */
+    .upgrade-btn {
+      background: linear-gradient(135deg, #92400e, #d97706);
+      color: #fef3c7;
+      border: none;
+      border-radius: 7px;
+      padding: 7px 13px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      font-family: inherit;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      white-space: nowrap;
+      margin-left: auto;
+      flex-shrink: 0;
+      transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+    }
+    .upgrade-btn:hover { opacity: 0.9; box-shadow: 0 0 10px rgba(217,119,6,0.4); }
+    .upgrade-btn-pulse {
+      animation: upgradePulse 0.4s ease-in-out 3;
+    }
+    @keyframes upgradePulse {
+      0%, 100% { transform: scale(1); box-shadow: none; }
+      50%       { transform: scale(1.08); box-shadow: 0 0 14px rgba(217,119,6,0.6); }
+    }
+    [data-theme="sun"] .upgrade-btn {
+      background: linear-gradient(135deg, #78350f, #b45309);
+      color: #fffbeb;
+    }
+
+    /* ── Add Observation button — locked (free tier at 3 cards) ── */
+    .btn-add-obs-locked {
+      border-color: var(--border2) !important;
+      color: var(--muted) !important;
+      cursor: not-allowed;
+    }
+    .btn-add-obs-locked:hover { border-color: var(--border2) !important; background: transparent !important; }
+
+    /* ── Premium tier badge (✦ inline marker) ── */
+    .tier-badge {
+      font-size: 0.72rem;
+      color: #d97706;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    [data-theme="sun"] .tier-badge { color: #92400e; }
+
+    /* ── Satellite upgrade hint in diagram card ── */
+    .satellite-hint {
+      font-size: 0.72rem;
+      font-weight: 400;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--muted);
+      margin-left: 4px;
+    }
+    .satellite-hint-link {
+      color: #d97706;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .satellite-hint-link:hover { text-decoration: underline; }
+    [data-theme="sun"] .satellite-hint-link { color: #92400e; }
+
+    /* ── Algorithm badge in results card ── */
+    .algo-badge {
+      font-size: 0.75rem;
+      font-family: 'SF Mono', 'Fira Mono', monospace;
+      color: var(--muted);
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
     /* ── GDOP Warning ── */
     #gdopWarning {
       background: var(--gdop-bg);
@@ -596,6 +713,9 @@
     <h1>Claude Triangulation</h1>
     <p>RF Signal Location — 3-Point Magnetic Bearing Fix</p>
   </div>
+  <button id="upgradeBtn" class="upgrade-btn" type="button"
+    title="Coming soon — account signup and premium upgrade in a future update"
+    aria-label="Upgrade to Premium">✦ Upgrade</button>
   <button id="themeBtn" class="theme-btn" title="Switch to sunlight mode" aria-label="Toggle sunlight mode">☀</button>
 </header>
 
@@ -622,6 +742,28 @@
         </div>
         <input type="range" id="bearingError" min="1" max="30" value="5" step="1">
         <span class="hint">Assumed compass accuracy — drives error radius size</span>
+      </div>
+    </div>
+    <div class="settings-row" style="margin-top:14px">
+      <div class="field">
+        <label for="algorithmSelect">Algorithm</label>
+        <select id="algorithmSelect">
+          <option value="mle"          data-premium="true" data-label="Maximum Likelihood (MLE)">Maximum Likelihood (MLE)</option>
+          <option value="ols"          selected>Least Squares (OLS)</option>
+          <option value="huber"        data-premium="true" data-label="Huber M-Estimator">Huber M-Estimator</option>
+          <option value="andrews"      data-premium="true" data-label="Andrews M-Estimator">Andrews M-Estimator</option>
+          <option value="centroid"     data-premium="true" data-label="Geometric Centroid">Geometric Centroid</option>
+          <option value="statmeans"    data-premium="true" data-label="Statistical Means">Statistical Means</option>
+          <option value="biangulation" data-premium="true" data-label="Biangulation (2 obs only)">Biangulation (2 obs only)</option>
+        </select>
+      </div>
+      <div class="field hidden" id="meanTypeWrap">
+        <label for="meanTypeSelect">Mean Type</label>
+        <select id="meanTypeSelect">
+          <option value="arithmetic" selected>Arithmetic Mean</option>
+          <option value="geometric">Geometric Mean</option>
+          <option value="harmonic">Harmonic Mean</option>
+        </select>
       </div>
     </div>
   </section>
@@ -657,6 +799,12 @@
     </div>
   </div>
 
+  <!-- ── Algorithm Error (convergence failure etc.) ── -->
+  <div id="algoError" class="hidden">
+    <span class="wi">⚠</span>
+    <div id="algoErrorMsg"></div>
+  </div>
+
   <!-- ── GDOP Warning ── -->
   <div id="gdopWarning" class="hidden">
     <span class="wi">⚠</span>
@@ -687,11 +835,17 @@
         <div class="rt">estimated radius — point is likely within this distance</div>
       </div>
     </div>
+    <div class="algo-badge" id="algoBadge"></div>
   </section>
 
   <!-- ── Diagram ── -->
   <section id="diagramCard" class="card hidden">
-    <div class="card-title">Bearing Fix Diagram</div>
+    <div class="card-title">
+      Bearing Fix Diagram
+      <span id="satelliteHint" class="satellite-hint hidden">
+        ·&ensp;<a href="#upgradeBtn" class="satellite-hint-link" onclick="document.getElementById('upgradeBtn').classList.add('upgrade-btn-pulse');setTimeout(()=>document.getElementById('upgradeBtn').classList.remove('upgrade-btn-pulse'),1200);return false;">✦ Upgrade for satellite view</a>
+      </span>
+    </div>
     <!-- Satellite map (primary, requires network) -->
     <div id="mapDiagram"></div>
     <!-- SVG fallback (offline / Leaflet unavailable) -->
