@@ -1,6 +1,22 @@
 'use strict';
 
 // ================================================================
+//  SUPABASE CONFIG  (Phase 2)
+//  Fill these in after completing the Supabase dashboard setup:
+//    Project Settings → API → Project URL  &  anon/public key
+//  The anon key is safe to ship in frontend code — it is access-controlled
+//  by Row-Level Security policies (added in Phase 3+).
+// ================================================================
+const SUPABASE_URL      = 'https://spagrpqdisiebxxuyyvq.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_wqYKdFLQLN3grMz28O2vUQ_bjkgNdnk';
+
+// Supabase JS client — falls back to null if the SDK CDN script failed to load
+// (e.g. completely offline on first visit).
+const _supabase = (typeof supabase !== 'undefined' && !SUPABASE_URL.includes('YOUR_PROJECT_REF'))
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+// ================================================================
 //  DEV OVERRIDE
 //  Set true locally to force premium features on without a backend.
 //  Must be false before any public deployment.
@@ -396,6 +412,288 @@ let _devTierOverride = null;
 function isPremium() {
   if (_devTierOverride !== null) return _devTierOverride === 'premium';
   return DEV_OVERRIDE || Entitlement.tier === 'premium';
+}
+
+/**
+ * Sync entitlement state via Supabase SDK (Phase 3+).
+ * Restores any stored session and updates Entitlement.source + header UI.
+ *
+ *   'server'  — SDK initialized, session check succeeded
+ *   'offline' — SDK unavailable (CDN failed to load) or network error
+ *   'local'   — SDK present but session check failed unexpectedly
+ *
+ * Non-blocking: called at init; resolves in the background.
+ * Phase 6 will call getUser() (server round-trip) instead of getSession() (local).
+ */
+async function _syncEntitlement() {
+  if (!_supabase) {
+    Entitlement.source = navigator.onLine ? 'local' : 'offline';
+    return;
+  }
+  try {
+    const { data: { session }, error } = await _supabase.auth.getSession();
+    if (error) throw error;
+    Entitlement.source = 'server';
+    _updateAccountUI(session);
+    if (session) {
+      // Re-register on load to refresh last_seen, then verify not evicted
+      await _registerDevice(session);
+      await _verifyDevice(session);
+      // Phase 5: fetch the real entitlement tier from the database
+      await _fetchEntitlement(session);
+    }
+    console.log('[Entitlement] SDK ready, logged in =', !!session);
+  } catch (err) {
+    Entitlement.source = navigator.onLine ? 'local' : 'offline';
+    console.log('[Entitlement] SDK error:', err.message);
+  }
+}
+
+/**
+ * Fetch the user's entitlement tier from the entitlements table.
+ * Updates Entitlement.tier and re-applies feature gates if the tier changed.
+ */
+async function _fetchEntitlement(session) {
+  if (!_supabase || !session) return;
+  try {
+    const { data, error } = await _supabase
+      .from('entitlements')
+      .select('tier')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    const newTier = data?.tier ?? 'free';
+    if (newTier !== Entitlement.tier) {
+      Entitlement.tier = newTier;
+      applyEntitlementGates();
+    }
+    console.log('[Entitlement] Tier from server:', newTier);
+  } catch (err) {
+    console.warn('[Entitlement] Could not fetch tier:', err.message);
+  }
+}
+
+// ================================================================
+//  STRIPE CHECKOUT  (Phase 5)
+// ================================================================
+
+/**
+ * Redirect the user to a Stripe Checkout page for the one-time premium purchase.
+ * Calls the create-checkout-session Edge Function which creates the session
+ * server-side (so user_id metadata can be securely embedded).
+ */
+async function _startCheckout() {
+  if (!_supabase) {
+    alert('Please sign in before upgrading.');
+    return;
+  }
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (!session) {
+    _showAuthModal('signin');
+    return;
+  }
+
+  const btn = get('upgradeBtn');
+  const originalLabel = btn.textContent;
+  btn.textContent = '⏳ Loading…';
+  btn.disabled = true;
+
+  try {
+    // The app URL is used for Stripe's success/cancel redirect targets.
+    // Works for both file:// local use and hosted deployments.
+    const appUrl = window.location.href.split('?')[0].split('#')[0];
+
+    const res = await fetch(
+      `${SUPABASE_URL}/functions/v1/create-checkout-session`,
+      {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ appUrl }),
+      }
+    );
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    // Redirect to Stripe's hosted checkout page
+    window.location.href = json.url;
+  } catch (err) {
+    console.error('[Checkout] Failed to start checkout:', err.message);
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+    alert('Could not start checkout. Please try again.');
+  }
+}
+
+// ================================================================
+//  DEVICE REGISTRY  (Phase 4)
+// ================================================================
+
+/**
+ * Upsert this device into the devices table.
+ * On a brand-new device this fires an INSERT → the DB trigger removes any
+ * device beyond the 2-device limit automatically.
+ * On a returning device it updates last_seen only (no trigger, no eviction).
+ */
+async function _registerDevice(session) {
+  if (!_supabase || !session) return;
+  try {
+    const { error } = await _supabase.from('devices').upsert(
+      {
+        user_id:      session.user.id,
+        device_id:    Entitlement.deviceId,
+        last_seen:    new Date().toISOString(),
+      },
+      { onConflict: 'user_id,device_id' }
+    );
+    if (error) throw error;
+    console.log('[Device] Registered/refreshed:', Entitlement.deviceId);
+  } catch (err) {
+    console.warn('[Device] Registration failed:', err.message);
+  }
+}
+
+/**
+ * Verify this device is still in the devices table.
+ * Returns true if verified (or if Supabase is unreachable — fail open).
+ * Returns false if the device was evicted (3rd-device kick).
+ */
+async function _verifyDevice(session) {
+  if (!_supabase || !session) return true;
+  try {
+    const { data, error } = await _supabase
+      .from('devices')
+      .select('id')
+      .eq('user_id',   session.user.id)
+      .eq('device_id', Entitlement.deviceId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      _handleDeviceRevoked();
+      return false;
+    }
+    return true;
+  } catch (err) {
+    // Fail open — if Supabase is unreachable we don't lock the user out
+    console.warn('[Device] Verification skipped (network issue):', err.message);
+    return true;
+  }
+}
+
+/**
+ * Called when this device has been evicted by the 2-device limit.
+ * Signs out locally and shows a clear message to the user.
+ */
+async function _handleDeviceRevoked() {
+  console.warn('[Device] This device was evicted by the 2-device limit.');
+  await _supabase.auth.signOut();
+  // Show the auth modal with an explanatory info message
+  _showAuthModal('signin');
+  _showAuthMsg(
+    'You were signed out because this account is active on 2 other devices. ' +
+    'Sign in again to use this device (the oldest device will be removed).',
+    'info'
+  );
+}
+
+// ================================================================
+//  AUTH UI
+// ================================================================
+
+let _authMode = 'signin'; // 'signin' | 'signup'
+
+/** Show or hide the Sign In / account badge based on session state. */
+function _updateAccountUI(session) {
+  const loggedIn = !!session;
+  get('accountBadge').classList.toggle('hidden', !loggedIn);
+  get('signInBtn').classList.toggle('hidden', loggedIn);
+  if (session) {
+    get('accountEmail').textContent = session.user.email;
+  }
+}
+
+/** Open the auth modal in the given mode ('signin' or 'signup'). */
+function _showAuthModal(mode = 'signin') {
+  _setAuthMode(mode);
+  _clearAuthMsg();
+  get('authEmailInput').value    = '';
+  get('authPasswordInput').value = '';
+  get('authOverlay').classList.remove('hidden');
+  setTimeout(() => get('authEmailInput').focus(), 60);
+}
+
+function _hideAuthModal() {
+  get('authOverlay').classList.add('hidden');
+  _clearAuthMsg();
+}
+
+function _setAuthMode(mode) {
+  _authMode = mode;
+  const isSignIn = mode === 'signin';
+  get('authTitle').textContent        = isSignIn ? 'Sign In' : 'Create Account';
+  get('authSubmitBtn').textContent    = isSignIn ? 'Sign In' : 'Create Account';
+  get('authToggleLabel').textContent  = isSignIn ? "Don't have an account?" : 'Already have an account?';
+  get('authToggleBtn').textContent    = isSignIn ? 'Create one' : 'Sign in';
+  get('authPasswordInput').autocomplete = isSignIn ? 'current-password' : 'new-password';
+}
+
+function _showAuthMsg(text, type = 'error') {
+  const el = get('authMsg');
+  el.textContent = text;
+  el.className   = `auth-msg ${type}`;
+}
+
+function _clearAuthMsg() {
+  const el = get('authMsg');
+  el.textContent = '';
+  el.className   = 'auth-msg hidden';
+}
+
+async function _handleAuthSubmit() {
+  if (!_supabase) return;
+
+  const email    = get('authEmailInput').value.trim();
+  const password = get('authPasswordInput').value;
+  const btn      = get('authSubmitBtn');
+
+  if (!email || !password) {
+    _showAuthMsg('Please enter your email and password.');
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = _authMode === 'signin' ? 'Signing in…' : 'Creating account…';
+  _clearAuthMsg();
+
+  try {
+    let result;
+    if (_authMode === 'signin') {
+      result = await _supabase.auth.signInWithPassword({ email, password });
+    } else {
+      result = await _supabase.auth.signUp({ email, password });
+    }
+
+    if (result.error) {
+      _showAuthMsg(result.error.message);
+    } else if (_authMode === 'signup' && !result.data.session) {
+      // Email confirmation required (enabled in Supabase Auth settings)
+      _showAuthMsg('Check your email for a confirmation link, then sign in.', 'info');
+    } else {
+      _hideAuthModal();
+    }
+  } catch (err) {
+    _showAuthMsg('Something went wrong. Please try again.');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = _authMode === 'signin' ? 'Sign In' : 'Create Account';
+  }
+}
+
+async function _handleSignOut() {
+  if (!_supabase) return;
+  await _supabase.auth.signOut();
+  // onAuthStateChange will fire and update the UI
 }
 
 /** DEV ONLY: Destroy the current Leaflet map so it reinitialises with
@@ -1400,6 +1698,35 @@ applyEntitlementGates();
 
 compute();
 
+// Non-blocking Supabase sync — fetches session, device check, and entitlement tier.
+_syncEntitlement();
+
+// ── Upgrade button ───────────────────────────────────────────────
+get('upgradeBtn').addEventListener('click', _startCheckout);
+
+// ── Handle return from Stripe Checkout ──────────────────────────
+// Stripe redirects back to ?payment=success or ?payment=cancelled.
+(function _handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get('payment');
+  if (!result) return;
+
+  // Clean the query string from the URL immediately
+  history.replaceState({}, '', window.location.pathname);
+
+  if (result === 'success') {
+    // Re-sync entitlement — webhook should have written the row by now.
+    // Small delay gives the webhook a moment to complete if it's still in flight.
+    setTimeout(async () => {
+      await _syncEntitlement();
+      if (isPremium()) {
+        console.log('[Checkout] Payment confirmed — premium unlocked.');
+      }
+    }, 1500);
+  }
+  // Cancelled: no action needed — user just lands back on the free tier.
+})();
+
 // GPS setup
 const _geo = detectGeoSupport();
 setGpsState(_geo.supported, _geo.reason);
@@ -1469,6 +1796,52 @@ window.addEventListener('online', () => {
     drawDiagram(..._lastDrawArgs);
   }
 });
+
+// ── Auth event listeners ──────────────────────────────────────────────────────
+
+// Sign In button (header)
+get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
+
+// Sign Out button (account badge)
+get('signOutBtn').addEventListener('click', _handleSignOut);
+
+// Modal close (X button or clicking outside the card)
+get('authCloseBtn').addEventListener('click', _hideAuthModal);
+get('authOverlay').addEventListener('click', e => {
+  if (e.target === get('authOverlay')) _hideAuthModal();
+});
+
+// Escape key closes modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !get('authOverlay').classList.contains('hidden')) {
+    _hideAuthModal();
+  }
+});
+
+// Submit button
+get('authSubmitBtn').addEventListener('click', _handleAuthSubmit);
+
+// Enter key in password field triggers submit
+get('authPasswordInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') _handleAuthSubmit();
+});
+
+// Toggle between sign-in and sign-up
+get('authToggleBtn').addEventListener('click', () => {
+  _setAuthMode(_authMode === 'signin' ? 'signup' : 'signin');
+  _clearAuthMsg();
+});
+
+// Supabase auth state change — fires on sign-in, sign-out, token refresh
+if (_supabase) {
+  _supabase.auth.onAuthStateChange(async (_event, session) => {
+    _updateAccountUI(session);
+    // Register device on every sign-in (new or returning)
+    if (session && (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED')) {
+      await _registerDevice(session);
+    }
+  });
+}
 
 // ── DEV ONLY: Tier toggle radio buttons — REMOVE BEFORE GOING LIVE ──────────
 (function initDevPanel() {
