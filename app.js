@@ -462,6 +462,7 @@ async function _fetchEntitlement(session) {
       .eq('user_id', session.user.id)
       .maybeSingle();
     if (error) throw error;
+    console.log('[Entitlement] Raw DB response — data:', data, 'user_id queried:', session.user.id);
     const newTier = data?.tier ?? 'free';
     if (newTier !== Entitlement.tier) {
       Entitlement.tier = newTier;
