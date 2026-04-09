@@ -503,26 +503,16 @@ async function _startCheckout() {
     // Works for both file:// local use and hosted deployments.
     const appUrl = window.location.href.split('?')[0].split('#')[0];
 
-    const res = await fetch(
-      `${SUPABASE_URL}/functions/v1/create-checkout-session`,
-      {
-        method:  'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey':        SUPABASE_ANON_KEY,   // required by Supabase API gateway
-        },
-        body: JSON.stringify({ appUrl }),
-      }
+    // Use the Supabase SDK to invoke the Edge Function — it handles auth headers
+    // and token refresh automatically, avoiding "Invalid JWT" errors from raw fetch.
+    const { data, error: fnError } = await _supabase.functions.invoke(
+      'create-checkout-session',
+      { body: { appUrl } }
     );
-    const json = await res.json();
-    // Catch both our custom error field and Supabase gateway errors (which use "message")
-    if (!res.ok || json.error || json.message) {
-      throw new Error(json.error || json.message || `HTTP ${res.status}`);
-    }
-    if (!json.url) throw new Error('No checkout URL returned from edge function');
+    if (fnError) throw fnError;
+    if (!data?.url) throw new Error('No checkout URL returned from edge function');
     // Redirect to Stripe's hosted checkout page
-    window.location.href = json.url;
+    window.location.href = data.url;
   } catch (err) {
     console.error('[Checkout] Failed to start checkout:', err.message);
     btn.textContent = originalLabel;
