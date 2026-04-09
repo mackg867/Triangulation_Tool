@@ -510,12 +510,17 @@ async function _startCheckout() {
         headers: {
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${session.access_token}`,
+          'apikey':        SUPABASE_ANON_KEY,   // required by Supabase API gateway
         },
         body: JSON.stringify({ appUrl }),
       }
     );
     const json = await res.json();
-    if (json.error) throw new Error(json.error);
+    // Catch both our custom error field and Supabase gateway errors (which use "message")
+    if (!res.ok || json.error || json.message) {
+      throw new Error(json.error || json.message || `HTTP ${res.status}`);
+    }
+    if (!json.url) throw new Error('No checkout URL returned from edge function');
     // Redirect to Stripe's hosted checkout page
     window.location.href = json.url;
   } catch (err) {
