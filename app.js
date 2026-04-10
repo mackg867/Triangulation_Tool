@@ -1840,12 +1840,18 @@ get('authToggleBtn').addEventListener('click', () => {
 });
 
 // Supabase auth state change — fires on sign-in, sign-out, token refresh
+// IMPORTANT: this handler must NOT be async / must not return a Promise.
+// Recent Supabase JS v2 releases await the callback before resolving
+// signInWithPassword — an async handler that does slow work (like
+// _registerDevice) will block sign-in from completing.
 if (_supabase) {
-  _supabase.auth.onAuthStateChange(async (_event, session) => {
+  _supabase.auth.onAuthStateChange((_event, session) => {
     _updateAccountUI(session);
-    // Register device on every sign-in (new or returning)
+    // Fire device registration in the background — do NOT await here
     if (session && (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED')) {
-      await _registerDevice(session);
+      _registerDevice(session).catch(err =>
+        console.warn('[Device] Background register failed:', err.message)
+      );
     }
   });
 }
