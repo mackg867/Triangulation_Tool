@@ -529,11 +529,32 @@ async function _fetchEntitlement(session) {
  */
 function _applyTierChange(newTier) {
   if (newTier === Entitlement.tier) return;
+  const prevTier = Entitlement.tier;
   Entitlement.tier = newTier;
+
+  // If the user was previously confirmed premium (not just the default 'free')
+  // and the server is now saying free, their access has been revoked.
+  if (prevTier === 'premium' && newTier === 'free') {
+    _showDowngradeNotice();
+  }
+
   // Destroy and recreate the map so _initMap picks the correct tile layer
   _destroyMap();
   applyEntitlementGates();
   compute(); // calls _initMap() internally
+}
+
+/**
+ * Show a calm, non-alarming notice when a user's premium access is revoked.
+ * Uses the auth modal as a lightweight info display — no new UI needed.
+ */
+function _showDowngradeNotice() {
+  _showAuthModal('signin');
+  _showAuthMsg(
+    'Your premium access is no longer active. If you believe this is an error, ' +
+    'please contact support.',
+    'info'
+  );
 }
 
 // ================================================================
@@ -795,6 +816,155 @@ async function _handleSignOut() {
     console.log('[Auth] Signed out successfully.');
   } catch (err) {
     console.warn('[Auth] Sign-out error (session cleared locally anyway):', err.message);
+  }
+}
+
+// ================================================================
+//  ACCOUNT MANAGEMENT MODAL
+// ================================================================
+
+/** Open the account management modal and populate it with live data. */
+async function _showAccountModal() {
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (!session) return;
+  get('accountModalEmail').textContent = session.user.email;
+  get('passwordMsg').textContent = '';
+  get('passwordMsg').classList.add('hidden');
+  get('newPasswordInput').value = '';
+  get('confirmPasswordInput').value = '';
+  get('accountModalOverlay').classList.remove('hidden');
+  await _loadDevices(session);
+}
+
+function _hideAccountModal() {
+  get('accountModalOverlay').classList.add('hidden');
+}
+
+/** Fetch this user's registered devices and render the list. */
+async function _loadDevices(session) {
+  const list = get('devicesList');
+  list.innerHTML = '<p class="acct-loading">Loading devices…</p>';
+  try {
+    const { data, error } = await _supabase
+      .from('devices')
+      .select('device_id, last_seen')
+      .eq('user_id', session.user.id)
+      .order('last_seen', { ascending: false });
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      list.innerHTML = '<p class="acct-loading">No devices found.</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+    data.forEach(device => {
+      const isCurrent = device.device_id === Entitlement.deviceId;
+      const lastSeen  = new Date(device.last_seen);
+      const ageMs     = Date.now() - lastSeen.getTime();
+      const ageDays   = Math.floor(ageMs / 86400000);
+      const ageHours  = Math.floor(ageMs / 3600000);
+      const seenStr   = ageDays  > 0 ? `${ageDays}d ago`
+                      : ageHours > 0 ? `${ageHours}h ago`
+                      : 'Just now';
+
+      const row = document.createElement('div');
+      row.className = 'device-row' + (isCurrent ? ' current-device' : '');
+      row.innerHTML = `
+        <div class="device-info">
+          <span class="device-label${isCurrent ? ' current' : ''}">
+            ${isCurrent ? '● This device' : '○ Other device'}
+          </span>
+          <span class="device-seen">Last active ${seenStr}</span>
+        </div>
+        <button class="device-remove-btn" data-device-id="${device.device_id}">
+          Remove
+        </button>`;
+      list.appendChild(row);
+    });
+
+    // Wire up remove buttons
+    list.querySelectorAll('.device-remove-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const deviceId = btn.dataset.deviceId;
+        btn.disabled = true;
+        btn.textContent = 'Removing…';
+        await _removeDevice(deviceId, session);
+      });
+    });
+  } catch (err) {
+    list.innerHTML = '<p class="acct-loading">Could not load devices.</p>';
+    console.error('[Account] Device load error:', err.message);
+  }
+}
+
+/** Remove a device. If it's the current device, sign out afterwards. */
+async function _removeDevice(deviceId, session) {
+  try {
+    const { error } = await _supabase
+      .from('devices')
+      .delete()
+      .eq('user_id', session.user.id)
+      .eq('device_id', deviceId);
+    if (error) throw error;
+
+    const isCurrent = deviceId === Entitlement.deviceId;
+    if (isCurrent) {
+      // Removed own device — sign out
+      _hideAccountModal();
+      await _handleSignOut();
+    } else {
+      // Refresh the list
+      await _loadDevices(session);
+    }
+  } catch (err) {
+    console.error('[Account] Remove device error:', err.message);
+    // Reload to reset button state
+    await _loadDevices(session);
+  }
+}
+
+/** Change the authenticated user's password. */
+async function _changePassword() {
+  const newPw  = get('newPasswordInput').value;
+  const confPw = get('confirmPasswordInput').value;
+  const msg    = get('passwordMsg');
+  const btn    = get('changePasswordBtn');
+
+  const showMsg = (text, isError = true) => {
+    msg.textContent = text;
+    msg.className   = 'auth-msg' + (isError ? '' : ' info');
+  };
+
+  if (!newPw || newPw.length < 6) {
+    showMsg('Password must be at least 6 characters.');
+    msg.classList.remove('hidden');
+    return;
+  }
+  if (newPw !== confPw) {
+    showMsg('Passwords do not match.');
+    msg.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Updating…';
+  msg.classList.add('hidden');
+
+  try {
+    const { error } = await _supabase.auth.updateUser({ password: newPw });
+    if (error) throw error;
+    get('newPasswordInput').value    = '';
+    get('confirmPasswordInput').value = '';
+    showMsg('Password updated successfully.', false);
+    msg.classList.remove('hidden');
+  } catch (err) {
+    showMsg(err.message || 'Could not update password. Please try again.');
+    msg.classList.remove('hidden');
+    console.error('[Account] Password change error:', err.message);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Update Password';
   }
 }
 
@@ -1906,6 +2076,22 @@ get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
 
 // Sign Out button (account badge)
 get('signOutBtn').addEventListener('click', _handleSignOut);
+
+// Account email — click to open account management modal
+get('accountEmail').addEventListener('click', _showAccountModal);
+
+// ── Account modal event listeners ────────────────────────────────────────────
+
+get('accountModalCloseBtn').addEventListener('click', _hideAccountModal);
+get('accountModalOverlay').addEventListener('click', e => {
+  if (e.target === get('accountModalOverlay')) _hideAccountModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !get('accountModalOverlay').classList.contains('hidden')) {
+    _hideAccountModal();
+  }
+});
+get('changePasswordBtn').addEventListener('click', _changePassword);
 
 // Modal close (X button or clicking outside the card)
 get('authCloseBtn').addEventListener('click', _hideAuthModal);
