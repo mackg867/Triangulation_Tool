@@ -399,10 +399,35 @@ function _generateDeviceId() {
  * source: 'local' | 'server' | 'offline'  (Phase 6 will populate 'server'/'offline')
  */
 const Entitlement = {
-  tier:     'free',
-  source:   'local',
-  deviceId: _generateDeviceId(),
+  tier:       'free',
+  source:     'local',   // 'local' | 'server' | 'offline'
+  verifiedAt: null,      // timestamp (ms) of last successful server verification
+  deviceId:   _generateDeviceId(),
 };
+
+// ── Entitlement cache ─────────────────────────────────────────────────────────
+// Persists the last-known tier to localStorage so premium features work offline.
+// The server is always consulted when online — this cache is only a fallback.
+// No TTL: a paid-once user should never lose premium just for being offline.
+// Keyed per-user so switching accounts never bleeds entitlements.
+const _ENT_CACHE_KEY = 'pinpoint_ent_v1';
+
+function _saveEntitlementCache(userId, tier) {
+  try {
+    localStorage.setItem(_ENT_CACHE_KEY, JSON.stringify(
+      { userId, tier, verifiedAt: Date.now() }
+    ));
+  } catch (_) { /* storage unavailable — silently skip */ }
+}
+
+function _loadEntitlementCache(userId) {
+  try {
+    const raw = localStorage.getItem(_ENT_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    return cached?.userId === userId ? cached : null; // never use another user's cache
+  } catch (_) { return null; }
+}
 
 // DEV ONLY: null = use real entitlement; 'free' | 'premium' = forced override.
 // Remove (or keep null) before any public deployment.
@@ -451,10 +476,15 @@ async function _syncEntitlement() {
 
 /**
  * Fetch the user's entitlement tier from the entitlements table.
- * Updates Entitlement.tier and re-applies feature gates if the tier changed.
+ *
+ * On success  — saves result to localStorage cache; updates Entitlement.tier,
+ *               source, and verifiedAt; reinitialises the map if tier changed.
+ * On failure  — falls back to localStorage cache (honours 7-day TTL).
+ *               If cache is expired, defaults to free.
  */
 async function _fetchEntitlement(session) {
   if (!_supabase || !session) return;
+
   try {
     const { data, error } = await _supabase
       .from('entitlements')
@@ -462,16 +492,48 @@ async function _fetchEntitlement(session) {
       .eq('user_id', session.user.id)
       .maybeSingle();
     if (error) throw error;
-    console.log('[Entitlement] Raw DB response — data:', data, 'user_id queried:', session.user.id);
-    const newTier = data?.tier ?? 'free';
-    if (newTier !== Entitlement.tier) {
-      Entitlement.tier = newTier;
-      applyEntitlementGates();
-    }
+
+    const newTier    = data?.tier ?? 'free';
+    const verifiedAt = Date.now();
+
+    // Persist to cache so offline visits can read it
+    _saveEntitlementCache(session.user.id, newTier);
+    Entitlement.source     = 'server';
+    Entitlement.verifiedAt = verifiedAt;
+
+    _applyTierChange(newTier);
+    _updateVerifiedLabel();
     console.log('[Entitlement] Tier from server:', newTier);
+
   } catch (err) {
-    console.warn('[Entitlement] Could not fetch tier:', err.message);
+    // Server unreachable — try localStorage cache
+    console.warn('[Entitlement] Server unreachable, checking cache:', err.message);
+    const cached = _loadEntitlementCache(session.user.id);
+
+    if (cached) {
+      // No TTL — a buy-once user should never lose premium for being offline
+      Entitlement.source     = 'offline';
+      Entitlement.verifiedAt = cached.verifiedAt;
+      console.log('[Entitlement] Using cached tier (offline):', cached.tier);
+      _applyTierChange(cached.tier);
+    }
+
+    _updateVerifiedLabel();
   }
+}
+
+/**
+ * Apply a tier value to Entitlement.tier.
+ * If the tier actually changed, reinitialises the map (so the tile layer
+ * switches between satellite and OpenStreetMap) and re-applies feature gates.
+ */
+function _applyTierChange(newTier) {
+  if (newTier === Entitlement.tier) return;
+  Entitlement.tier = newTier;
+  // Destroy and recreate the map so _initMap picks the correct tile layer
+  _destroyMap();
+  applyEntitlementGates();
+  compute(); // calls _initMap() internally
 }
 
 // ================================================================
@@ -606,7 +668,40 @@ function _updateAccountUI(session) {
   get('signInBtn').classList.toggle('hidden', loggedIn);
   if (session) {
     get('accountEmail').textContent = session.user.email;
+  } else {
+    // Clear the verified label on sign-out
+    const lbl = get('lastVerifiedLabel');
+    if (lbl) { lbl.textContent = ''; lbl.classList.add('hidden'); }
   }
+}
+
+/**
+ * Update the subtle "Last verified" label in the account badge.
+ * Only visible when offline — confirms to the user that premium is still
+ * active based on a cached verification, and when that verification was.
+ */
+function _updateVerifiedLabel() {
+  const el = get('lastVerifiedLabel');
+  if (!el || !Entitlement.verifiedAt) return;
+
+  const ageMs    = Date.now() - Entitlement.verifiedAt;
+  const ageDays  = Math.floor(ageMs / 86400000);
+  const ageHours = Math.floor(ageMs / 3600000);
+  const ageMins  = Math.floor(ageMs / 60000);
+
+  function _ageStr() {
+    if (ageDays  > 0) return ageDays  + 'd ago';
+    if (ageHours > 0) return ageHours + 'h ago';
+    return ageMins + 'm ago';
+  }
+
+  // Only show the label when offline — no need to surface it to online users
+  const text = Entitlement.source === 'offline'
+    ? 'Offline · last verified ' + _ageStr()
+    : '';
+
+  el.textContent = text;
+  el.classList.toggle('hidden', text === '');
 }
 
 /** Open the auth modal in the given mode ('signin' or 'signup'). */
