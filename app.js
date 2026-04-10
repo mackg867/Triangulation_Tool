@@ -662,24 +662,15 @@ async function _handleAuthSubmit() {
   btn.textContent = _authMode === 'signin' ? 'Signing in…' : 'Creating account…';
   _clearAuthMsg();
 
-  // Timeout so the button never hangs forever if Supabase is unreachable
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Request timed out — check your connection and try again.')), 10000)
-  );
-
   try {
     let result;
+    console.log('[Auth] Calling signInWithPassword...');
     if (_authMode === 'signin') {
-      result = await Promise.race([
-        _supabase.auth.signInWithPassword({ email, password }),
-        timeout
-      ]);
+      result = await _supabase.auth.signInWithPassword({ email, password });
     } else {
-      result = await Promise.race([
-        _supabase.auth.signUp({ email, password }),
-        timeout
-      ]);
+      result = await _supabase.auth.signUp({ email, password });
     }
+    console.log('[Auth] signInWithPassword resolved — error:', result?.error?.message ?? 'none');
 
     if (result.error) {
       _showAuthMsg(result.error.message);
@@ -687,7 +678,9 @@ async function _handleAuthSubmit() {
       // Email confirmation required (enabled in Supabase Auth settings)
       _showAuthMsg('Check your email for a confirmation link, then sign in.', 'info');
     } else {
+      console.log('[Auth] Hiding modal...');
       _hideAuthModal();
+      console.log('[Auth] Modal hidden — sign-in complete.');
     }
   } catch (err) {
     _showAuthMsg(err.message || 'Something went wrong. Please try again.');
