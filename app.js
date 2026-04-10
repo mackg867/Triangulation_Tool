@@ -688,8 +688,14 @@ async function _handleAuthSubmit() {
 
 async function _handleSignOut() {
   if (!_supabase) return;
-  await _supabase.auth.signOut();
-  // onAuthStateChange will fire and update the UI
+  // Update UI immediately — don't wait for onAuthStateChange
+  _updateAccountUI(null);
+  try {
+    await _supabase.auth.signOut();
+    console.log('[Auth] Signed out successfully.');
+  } catch (err) {
+    console.warn('[Auth] Sign-out error (session cleared locally anyway):', err.message);
+  }
 }
 
 /** DEV ONLY: Destroy the current Leaflet map so it reinitialises with
