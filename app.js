@@ -2081,17 +2081,30 @@ get('signOutBtn').addEventListener('click', _handleSignOut);
 get('accountEmail').addEventListener('click', _showAccountModal);
 
 // ── Account modal event listeners ────────────────────────────────────────────
+// Null-guarded so a missing element (e.g. cached old HTML) never breaks the
+// rest of the script — sign-in and other listeners still register correctly.
 
-get('accountModalCloseBtn').addEventListener('click', _hideAccountModal);
-get('accountModalOverlay').addEventListener('click', e => {
-  if (e.target === get('accountModalOverlay')) _hideAccountModal();
-});
+if (get('accountModalCloseBtn')) {
+  get('accountModalCloseBtn').addEventListener('click', _hideAccountModal);
+}
+if (get('accountModalOverlay')) {
+  get('accountModalOverlay').addEventListener('click', e => {
+    if (e.target === get('accountModalOverlay')) _hideAccountModal();
+  });
+}
+if (get('changePasswordBtn')) {
+  get('changePasswordBtn').addEventListener('click', _changePassword);
+}
+
+// Escape key — extend existing keydown listener to also close account modal
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !get('accountModalOverlay').classList.contains('hidden')) {
-    _hideAccountModal();
+  if (e.key === 'Escape') {
+    const acctOverlay = get('accountModalOverlay');
+    if (acctOverlay && !acctOverlay.classList.contains('hidden')) {
+      _hideAccountModal();
+    }
   }
 });
-get('changePasswordBtn').addEventListener('click', _changePassword);
 
 // Modal close (X button or clicking outside the card)
 get('authCloseBtn').addEventListener('click', _hideAuthModal);

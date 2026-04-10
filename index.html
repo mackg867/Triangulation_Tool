@@ -756,6 +756,64 @@
       transition: color 0.15s;
     }
     .account-signout:hover { color: var(--danger); }
+    .last-verified {
+      font-size: 0.65rem;
+      color: var(--muted);
+      white-space: nowrap;
+      opacity: 0.75;
+    }
+    .account-email {
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 2px;
+    }
+    .account-email:hover { opacity: 0.8; }
+    /* ── Account management modal ── */
+    .account-modal { max-width: 400px; }
+    .acct-section { margin-top: 18px; }
+    .acct-section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 10px;
+    }
+    .acct-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 20px 0 0;
+    }
+    .acct-loading { font-size: 0.8rem; color: var(--muted); margin: 0; }
+    .devices-list { display: flex; flex-direction: column; gap: 8px; }
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--input-bg);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 9px 12px;
+    }
+    .device-row.current-device { border-color: var(--accent); }
+    .device-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .device-label { font-size: 0.8rem; font-weight: 500; color: var(--text); }
+    .device-label.current { color: var(--accent); }
+    .device-seen { font-size: 0.7rem; color: var(--muted); }
+    .device-remove-btn {
+      flex-shrink: 0;
+      background: none;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      padding: 4px 9px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .device-remove-btn:hover { color: var(--danger); border-color: var(--danger); }
     [data-theme="sun"] .account-badge {
       background: color-mix(in srgb, var(--accent) 10%, transparent);
       border-color: color-mix(in srgb, var(--accent) 25%, transparent);
@@ -945,6 +1003,7 @@
     <!-- Account badge — visible when logged in -->
     <div id="accountBadge" class="account-badge hidden" aria-live="polite">
       <span id="accountEmail" class="account-email"></span>
+      <span id="lastVerifiedLabel" class="last-verified hidden"></span>
       <button id="signOutBtn" class="account-signout" type="button" title="Sign out" aria-label="Sign out">↪</button>
     </div>
     <!-- Sign In — visible when logged out -->
@@ -1103,6 +1162,41 @@
   </section>
 
 </main>
+
+<!-- ── Account management modal ── -->
+<div id="accountModalOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+  <div class="auth-modal account-modal">
+    <button id="accountModalCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <div class="auth-modal-logo">⊕</div>
+    <h2 id="accountModalTitle" class="auth-title">Account</h2>
+    <p id="accountModalEmail" class="auth-subtitle"></p>
+
+    <!-- Devices section -->
+    <div class="acct-section">
+      <h3 class="acct-section-title">Registered Devices</h3>
+      <div id="devicesList" class="devices-list">
+        <p class="acct-loading">Loading devices…</p>
+      </div>
+    </div>
+
+    <div class="acct-divider"></div>
+
+    <!-- Change password section -->
+    <div class="acct-section">
+      <h3 class="acct-section-title">Change Password</h3>
+      <div id="passwordMsg" class="auth-msg hidden" role="alert"></div>
+      <div class="field">
+        <label for="newPasswordInput">New password</label>
+        <input type="password" id="newPasswordInput" placeholder="Min. 6 characters" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="confirmPasswordInput">Confirm new password</label>
+        <input type="password" id="confirmPasswordInput" placeholder="Repeat new password" autocomplete="new-password">
+      </div>
+      <button id="changePasswordBtn" class="btn-auth-submit" type="button">Update Password</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Auth modal ── -->
 <div id="authOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
