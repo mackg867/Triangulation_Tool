@@ -1847,10 +1847,16 @@ get('authToggleBtn').addEventListener('click', () => {
 if (_supabase) {
   _supabase.auth.onAuthStateChange((_event, session) => {
     _updateAccountUI(session);
-    // Fire device registration in the background — do NOT await here
+    // Fire device registration + entitlement fetch in the background.
+    // Do NOT await here — keeping this handler synchronous is required
+    // so signInWithPassword resolves immediately.
     if (session && (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED')) {
-      _registerDevice(session).catch(err =>
-        console.warn('[Device] Background register failed:', err.message)
+      (async () => {
+        await _registerDevice(session);
+        await _verifyDevice(session);
+        await _fetchEntitlement(session);
+      })().catch(err =>
+        console.warn('[Auth] Background sync failed:', err.message)
       );
     }
   });
