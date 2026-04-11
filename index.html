@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pinpoint</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">⊕</div>
+  <div class="header-title">
+    <h1>Pinpoint</h1>
+    <p>Advanced telemetry for the modern researcher.</p>
+  </div>
+  <div class="header-actions">
+    <!-- Account badge — visible when logged in -->
+    <div id="accountBadge" class="account-badge hidden" aria-live="polite">
+      <span id="accountEmail" class="account-email"></span>
+      <span id="lastVerifiedLabel" class="last-verified hidden"></span>
+      <button id="signOutBtn" class="account-signout" type="button" title="Sign out" aria-label="Sign out">↪</button>
+    </div>
+    <!-- Sign In — visible when logged out -->
+    <button id="signInBtn" class="sign-in-btn" type="button" aria-label="Sign in to your account">Sign In</button>
+    <button id="upgradeBtn" class="upgrade-btn" type="button"
+      title="Coming soon — account signup and premium upgrade in a future update"
+      aria-label="Upgrade to Premium">✦ Upgrade</button>
+    <button id="themeBtn" class="theme-btn" title="Switch to sunlight mode" aria-label="Toggle sunlight mode">☀</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ══ DEV ONLY: Tier toggle — REMOVE BEFORE GOING LIVE ══ -->
+  <div id="devPanel" aria-label="Dev tier override">
+    <span class="dev-label">⚠ DEV</span>
+    <label><input type="radio" name="devTier" value="free" id="devFreeRadio"> Free</label>
+    <label><input type="radio" name="devTier" value="premium" id="devPremiumRadio"> Premium</label>
+  </div>
+
+  <!-- ── Settings ── -->
+  <section class="card">
+    <div class="card-title">Settings</div>
+    <div class="settings-row">
+      <div class="field">
+        <label for="declination">Magnetic Declination</label>
+        <div class="input-unit">
+          <input type="number" id="declination" step="0.1" value="0" placeholder="0.0" min="-90" max="90">
+          <span class="unit-badge">°</span>
+        </div>
+        <span class="hint">East = positive&ensp;West = negative&ensp;·&ensp;
+          <a href="https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml" target="_blank" rel="noopener">Look up ↗</a>
+        </span>
+      </div>
+      <div class="field">
+        <div class="slider-label">
+          <label for="bearingError">Bearing Error</label>
+          <span class="slider-val" id="bearingErrorLabel">±5°</span>
+        </div>
+        <input type="range" id="bearingError" min="1" max="30" value="5" step="1">
+        <span class="hint">Assumed compass accuracy — drives error radius size</span>
+      </div>
+    </div>
+    <div class="settings-row" style="margin-top:14px">
+      <div class="field">
+        <label for="algorithmSelect">Algorithm</label>
+        <select id="algorithmSelect">
+          <option value="mle"          data-premium="true" data-label="Maximum Likelihood (MLE)">Maximum Likelihood (MLE)</option>
+          <option value="ols"          selected>Least Squares (OLS)</option>
+          <option value="huber"        data-premium="true" data-label="Huber M-Estimator">Huber M-Estimator</option>
+          <option value="andrews"      data-premium="true" data-label="Andrews M-Estimator">Andrews M-Estimator</option>
+          <option value="centroid"     data-premium="true" data-label="Geometric Centroid">Geometric Centroid</option>
+          <option value="statmeans"    data-premium="true" data-label="Statistical Means">Statistical Means</option>
+          <option value="biangulation" data-premium="true" data-label="Biangulation (2 obs only)">Biangulation (2 obs only)</option>
+        </select>
+      </div>
+      <div class="field hidden" id="meanTypeWrap">
+        <label for="meanTypeSelect">Mean Type</label>
+        <select id="meanTypeSelect">
+          <option value="arithmetic" selected>Arithmetic Mean</option>
+          <option value="geometric">Geometric Mean</option>
+          <option value="harmonic">Harmonic Mean</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── GPS Info Banner (shown when geolocation is unavailable) ── -->
+  <div id="gpsBanner" class="hidden">
+    <span class="bi">ℹ</span>
+    <div>
+      <strong>GPS auto-fill not available</strong><br>
+      <span id="gpsBannerDetail"></span>
+    </div>
+  </div>
+
+  <!-- ── Observer cards (rendered by JS) ── -->
+  <div id="obsContainer"></div>
+
+  <!-- ── Add Observation button ── -->
+  <button id="addObsBtn" class="btn-add-obs" type="button">+ Add Observation</button>
+
+  <!-- ── Actions ── -->
+  <div class="actions">
+    <button id="clearBtn" class="btn-ghost">↺&ensp;Clear / Reset</button>
+    <span class="obs-count hidden" id="obsCount"></span>
+    <span class="status-dot" id="statusDot" title="Live — recalculates on every input change"></span>
+  </div>
+
+  <!-- ── Not enough observations warning ── -->
+  <div id="minObsWarning" class="hidden">
+    <span class="wi">⚠</span>
+    <div>
+      <strong>Not enough active observations.</strong><br>
+      Enable at least 3 observations to compute a fix.
+    </div>
+  </div>
+
+  <!-- ── Algorithm Error (convergence failure etc.) ── -->
+  <div id="algoError" class="hidden">
+    <span class="wi">⚠</span>
+    <div id="algoErrorMsg"></div>
+  </div>
+
+  <!-- ── GDOP Warning ── -->
+  <div id="gdopWarning" class="hidden">
+    <span class="wi">⚠</span>
+    <div>
+      <strong>Geometry too weak — no reliable fix possible.</strong><br>
+      The three bearing lines are nearly parallel. Move observers to different sides of the
+      suspected signal source and re-measure bearings.
+    </div>
+  </div>
+
+  <!-- ── Results ── -->
+  <section id="resultsCard" class="card hidden">
+    <div class="card-title">✓&ensp;Estimated Target Location</div>
+    <div class="coord-rows">
+      <div class="coord-row">
+        <span class="coord-fmt">Decimal</span>
+        <span class="coord-val" id="resDecimal">—</span>
+      </div>
+      <div class="coord-row">
+        <span class="coord-fmt">DMS</span>
+        <span class="coord-val" id="resDMS">—</span>
+      </div>
+    </div>
+    <div class="radius-pill">
+      <span class="ri">◎</span>
+      <div>
+        <div class="rv" id="resRadius">—</div>
+        <div class="rt">estimated radius — point is likely within this distance</div>
+      </div>
+    </div>
+    <div class="algo-badge" id="algoBadge"></div>
+  </section>
+
+  <!-- ── Diagram ── -->
+  <section id="diagramCard" class="card hidden">
+    <div class="card-title">
+      Bearing Fix Diagram
+      <span id="satelliteHint" class="satellite-hint hidden">
+        ·&ensp;<a href="#upgradeBtn" class="satellite-hint-link" onclick="document.getElementById('upgradeBtn').classList.add('upgrade-btn-pulse');setTimeout(()=>document.getElementById('upgradeBtn').classList.remove('upgrade-btn-pulse'),1200);return false;">✦ Upgrade for satellite view</a>
+      </span>
+    </div>
+    <!-- Satellite map (primary, requires network) -->
+    <div id="mapDiagram"></div>
+    <!-- SVG fallback (offline / Leaflet unavailable) -->
+    <svg id="svgDiagram"
+         class="hidden"
+         viewBox="0 0 580 460"
+         preserveAspectRatio="xMidYMid meet"
+         role="img"
+         aria-label="Triangulation diagram: observer positions, bearing lines, estimated target and error circle">
+    </svg>
+  </section>
+
+</main>
+
+<!-- ── Account management modal ── -->
+<div id="accountModalOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+  <div class="auth-modal account-modal">
+    <button id="accountModalCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <div class="auth-modal-logo">⊕</div>
+    <h2 id="accountModalTitle" class="auth-title">Account</h2>
+    <p id="accountModalEmail" class="auth-subtitle"></p>
+
+    <!-- Devices section -->
+    <div class="acct-section">
+      <h3 class="acct-section-title">Registered Devices</h3>
+      <div id="devicesList" class="devices-list">
+        <p class="acct-loading">Loading devices…</p>
+      </div>
+    </div>
+
+    <div class="acct-divider"></div>
+
+    <!-- Change password section -->
+    <div class="acct-section">
+      <h3 class="acct-section-title">Change Password</h3>
+      <div id="passwordMsg" class="auth-msg hidden" role="alert"></div>
+      <div class="field">
+        <label for="newPasswordInput">New password</label>
+        <input type="password" id="newPasswordInput" placeholder="Min. 6 characters" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="confirmPasswordInput">Confirm new password</label>
+        <input type="password" id="confirmPasswordInput" placeholder="Repeat new password" autocomplete="new-password">
+      </div>
+      <button id="changePasswordBtn" class="btn-auth-submit" type="button">Update Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Auth modal ── -->
+<div id="authOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <div class="auth-modal">
+    <button id="authCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <div class="auth-modal-logo">⊕</div>
+    <h2 id="authTitle" class="auth-title">Sign In</h2>
+    <p class="auth-subtitle">Pinpoint</p>
+    <div id="authMsg" class="auth-msg hidden" role="alert"></div>
+    <div class="field">
+      <label for="authEmail">Email</label>
+      <input type="email" id="authEmailInput" placeholder="your@email.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label for="authPassword">Password</label>
+      <input type="password" id="authPasswordInput" placeholder="Password" autocomplete="current-password">
+    </div>
+    <button id="authSubmitBtn" class="btn-auth-submit" type="button">Sign In</button>
+    <p class="auth-toggle-wrap">
+      <span id="authToggleLabel">Don't have an account?</span>
+      <button id="authToggleBtn" class="auth-toggle-btn" type="button">Create one</button>
+    </p>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Supabase JS SDK — pin to a specific version before going live -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<!-- App modules (load order matters — dependencies first) -->
+<script src="js/config.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/formatters.js"></script>
+<script src="js/device.js"></script>
+<script src="js/entitlement.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/observer-cards.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/input.js"></script>
+<script src="js/diagrams.js"></script>
+<script src="js/gps.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>
