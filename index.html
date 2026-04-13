@@ -207,6 +207,40 @@
   </div>
 </div>
 
+<!-- ── Benefits of Upgrading modal ── -->
+<div id="benefitsOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="benefitsTitle">
+  <div class="auth-modal benefits-modal">
+    <button id="benefitsCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <h2 id="benefitsTitle" class="auth-title">Get more from Pinpoint</h2>
+    <p class="auth-subtitle">Upgrade once. No subscription.</p>
+
+    <div class="benefits-list">
+      <div class="benefits-item">
+        <div class="benefits-item-title">Unlimited Observations</div>
+        <div class="benefits-item-desc">Free accounts are limited to 3 observation points. Premium removes that limit — add as many as your operation requires for a more precise fix.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Satellite Imagery</div>
+        <div class="benefits-item-desc">See your bearing fix plotted on real satellite imagery instead of a basic street map. Essential for field work in remote or terrain-heavy areas.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Advanced Algorithms</div>
+        <div class="benefits-item-desc">Unlock six additional solving methods — Maximum Likelihood, Huber M-Estimator, Andrews M-Estimator, Geometric Centroid, Statistical Means, and Biangulation — each suited to different field conditions and signal environments.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Use on Up to 2 Devices</div>
+        <div class="benefits-item-desc">Your premium access is tied to your account, not your device. Sign in on up to 2 devices — desktop, tablet, or phone. If you sign into a third device, the least recently used one is automatically dropped. You can manage your registered devices at any time under Manage Account.</div>
+      </div>
+    </div>
+
+    <p class="benefits-pricing">One-time payment of <strong>$9.99</strong>. No subscription, no recurring charges.</p>
+    <button id="benefitsUpgradeBtn" class="btn-auth-submit" type="button">✦ Upgrade Now — $9.99</button>
+    <p class="auth-toggle-wrap">
+      Already upgraded?&ensp;<button id="benefitsSignInBtn" class="auth-toggle-btn" type="button">Sign in</button>&ensp;to restore your access.
+    </p>
+  </div>
+</div>
+
 <!-- ── Auth modal ── -->
 <div id="authOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
   <div class="auth-modal">
@@ -245,6 +279,10 @@
     <button id="drawerSignOut" class="drawer-item" type="button">Sign Out</button>
     <div class="drawer-divider"></div>
   </div>
+
+  <!-- Sign In — visible when logged out -->
+  <button id="drawerSignIn" class="drawer-item" type="button">Sign In</button>
+  <div id="drawerSignInDivider" class="drawer-divider"></div>
 
   <!-- Benefits of Upgrading — hidden once user is premium -->
   <button id="drawerBenefits" class="drawer-item hidden" type="button">Benefits of Upgrading</button>

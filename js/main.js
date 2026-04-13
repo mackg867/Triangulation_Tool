@@ -235,6 +235,15 @@ get('themeBtn').addEventListener('click', () => {
 // ── Auth event listeners ──────────────────────────────────────────────────────
 
 // Sign In button (header)
+// ── Benefits of Upgrading modal ──────────────────────────────────────────────
+function _showBenefitsModal() {
+  get('benefitsOverlay').classList.remove('hidden');
+}
+
+function _hideBenefitsModal() {
+  get('benefitsOverlay').classList.add('hidden');
+}
+
 // ── Navigation Drawer ─────────────────────────────────────────────────────────
 function _openDrawer() {
   get('navDrawer').classList.add('open');
@@ -257,7 +266,8 @@ get('drawerOverlay').addEventListener('click', _closeDrawer);
 // Drawer menu items
 get('drawerManageAccount').addEventListener('click', () => { _closeDrawer(); _showAccountModal(); });
 get('drawerSignOut').addEventListener('click', () => { _closeDrawer(); _handleSignOut(); });
-get('drawerBenefits').addEventListener('click', _closeDrawer);   // placeholder
+get('drawerSignIn').addEventListener('click', () => { _closeDrawer(); _showAuthModal('signin'); });
+get('drawerBenefits').addEventListener('click', () => { _closeDrawer(); _showBenefitsModal(); });
 get('drawerHowTo').addEventListener('click', _closeDrawer);      // placeholder
 
 get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
@@ -282,10 +292,30 @@ if (get('changePasswordBtn')) {
   get('changePasswordBtn').addEventListener('click', _changePassword);
 }
 
+
+// Benefits modal — close
+get('benefitsCloseBtn').addEventListener('click', _hideBenefitsModal);
+get('benefitsOverlay').addEventListener('click', e => {
+  if (e.target === get('benefitsOverlay')) _hideBenefitsModal();
+});
+
+// Benefits modal — upgrade button
+get('benefitsUpgradeBtn').addEventListener('click', () => {
+  _hideBenefitsModal();
+  _startCheckout();
+});
+
+// Benefits modal — sign in link
+get('benefitsSignInBtn').addEventListener('click', () => {
+  _hideBenefitsModal();
+  _showAuthModal('signin');
+});
+
 // Escape key — close drawer, account modal, or auth modal
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (get('navDrawer').classList.contains('open')) { _closeDrawer(); return; }
+    if (!get('benefitsOverlay').classList.contains('hidden')) { _hideBenefitsModal(); return; }
     const acctOverlay = get('accountModalOverlay');
     if (acctOverlay && !acctOverlay.classList.contains('hidden')) {
       _hideAccountModal();

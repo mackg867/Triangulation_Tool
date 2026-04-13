@@ -9,6 +9,8 @@ function _updateAccountUI(session) {
   const loggedIn = !!session;
   get('signInBtn').classList.toggle('hidden', loggedIn);
   get('drawerAccount').classList.toggle('hidden', !loggedIn);
+  get('drawerSignIn').classList.toggle('hidden', loggedIn);
+  get('drawerSignInDivider').classList.toggle('hidden', loggedIn);
   if (session) {
     get('drawerEmail').textContent = session.user.email;
   } else {
