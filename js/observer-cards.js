@@ -80,7 +80,7 @@ function applyEntitlementGates() {
   // Lock premium options for free users; restore them for premium users.
   get('algorithmSelect').querySelectorAll('option[data-premium]').forEach(opt => {
     const base = opt.dataset.label;           // clean label stored in data attr
-    opt.textContent = premium ? base : `${base}  ✦`;
+    opt.textContent = base;
     opt.disabled    = !premium;
   });
 
@@ -92,6 +92,9 @@ function applyEntitlementGates() {
     get('meanTypeWrap').classList.add('hidden');
     applyBiangulationLock(false);
   }
+
+  // ── Algorithm upgrade hint ──────────────────────────────────────
+  get('algoUpgradeHint').classList.toggle('hidden', premium);
 
   // ── Upgrade button visibility ────────────────────────────────────
   get('upgradeBtn').classList.toggle('hidden', premium);
