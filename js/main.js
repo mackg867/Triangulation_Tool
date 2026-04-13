@@ -238,10 +238,8 @@ get('themeBtn').addEventListener('click', () => {
 get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
 
 // Sign Out button (account badge)
-get('signOutBtn').addEventListener('click', _handleSignOut);
 
 // Account email — click to open account management modal
-get('accountEmail').addEventListener('click', _showAccountModal);
 
 // ── Account modal event listeners ────────────────────────────────────────────
 // Null-guarded so a missing element (e.g. cached old HTML) never breaks the

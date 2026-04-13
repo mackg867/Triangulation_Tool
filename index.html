@@ -10,17 +10,16 @@
 <body>
 
 <header>
-  <div class="logo">⊕</div>
+  <button id="menuBtn" class="hamburger-btn" type="button" disabled aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
   <div class="header-title">
     <h1>Pinpoint</h1>
-    <p>Advanced telemetry for the modern researcher.</p>
   </div>
   <div class="header-actions">
     <!-- Account badge — visible when logged in -->
     <div id="accountBadge" class="account-badge hidden" aria-live="polite">
-      <span id="accountEmail" class="account-email"></span>
-      <span id="lastVerifiedLabel" class="last-verified hidden"></span>
-      <button id="signOutBtn" class="account-signout" type="button" title="Sign out" aria-label="Sign out">↪</button>
+<span id="lastVerifiedLabel" class="last-verified hidden"></span>
     </div>
     <!-- Sign In — visible when logged out -->
     <button id="signInBtn" class="sign-in-btn" type="button" aria-label="Sign in to your account">Sign In</button>
@@ -45,21 +44,18 @@
     <div class="card-title">Settings</div>
     <div class="settings-row">
       <div class="field">
-        <label for="declination">Magnetic Declination</label>
+        <label for="declination">Magnetic Declination&ensp;·&ensp;<a href="https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml" target="_blank" rel="noopener" class="label-link">Look up ↗</a></label>
         <div class="input-unit">
           <input type="number" id="declination" step="0.1" value="0" placeholder="0.0" min="-90" max="90">
           <span class="unit-badge">°</span>
         </div>
-        <span class="hint">East = positive&ensp;West = negative&ensp;·&ensp;
-          <a href="https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml" target="_blank" rel="noopener">Look up ↗</a>
-        </span>
       </div>
       <div class="field">
         <div class="slider-label">
           <label for="bearingError">Bearing Error</label>
-          <span class="slider-val" id="bearingErrorLabel">±5°</span>
+          <span class="slider-val" id="bearingErrorLabel">±0°</span>
         </div>
-        <input type="range" id="bearingError" min="1" max="30" value="5" step="1">
+        <input type="range" id="bearingError" min="0" max="30" value="0" step="1">
         <span class="hint">Assumed compass accuracy — drives error radius size</span>
       </div>
     </div>

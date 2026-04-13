@@ -109,7 +109,7 @@ function _refreshAddObsBtn() {
   const locked = !isPremium() && qsa('.obs-card').length >= 3;
   const btn    = get('addObsBtn');
   btn.classList.toggle('btn-add-obs-locked', locked);
-  btn.textContent = locked ? '+ Add Observation  ✦' : '+ Add Observation';
+  btn.textContent = locked ? '+ Add Observation  —  Upgrade to unlock' : '+ Add Observation';
 }
 
 /** Build and return a new observer card DOM element. */

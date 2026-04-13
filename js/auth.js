@@ -10,7 +10,6 @@ function _updateAccountUI(session) {
   get('accountBadge').classList.toggle('hidden', !loggedIn);
   get('signInBtn').classList.toggle('hidden', loggedIn);
   if (session) {
-    get('accountEmail').textContent = session.user.email;
   } else {
     // Clear the verified label on sign-out
     const lbl = get('lastVerifiedLabel');
