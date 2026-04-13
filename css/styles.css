@@ -98,8 +98,7 @@
       align-items: center; justify-content: center;
       gap: 5px;
       flex-shrink: 0;
-      cursor: default;
-      opacity: 0.45;
+      cursor: pointer;
       padding: 0;
     }
     .hamburger-btn span {
