@@ -207,6 +207,72 @@
   </div>
 </div>
 
+<!-- ── Running a Triangulation Fix modal ── -->
+<div id="triangulationOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="triangulationTitle">
+  <div class="auth-modal benefits-modal">
+    <button id="triangulationCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <h2 id="triangulationTitle" class="auth-title">Running a Triangulation Fix</h2>
+
+    <div class="benefits-list">
+      <div class="benefits-item">
+        <div class="benefits-item-title">How Triangulation Works</div>
+        <div class="benefits-item-desc">Enter at least 3 GPS positions and compass bearings from different vantage points. Pinpoint finds the point where those bearing lines best intersect — your estimated target location.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Step 1 — Configure Settings</div>
+        <div class="benefits-item-desc">Set your magnetic declination for your region (use the Look Up link to find it). Set your bearing error to match your compass accuracy — a lower value assumes a more precise instrument.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Step 2 — Add Observers</div>
+        <div class="benefits-item-desc">Each observer card represents one vantage point. Enter the GPS coordinates of that position and the compass bearing toward the signal source. Use the GPS button on each card to auto-fill your current location.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Step 3 — Read the Results</div>
+        <div class="benefits-item-desc">Results calculate automatically as you type — no button to press. The results card shows the estimated target coordinates in both decimal and DMS format, plus an error radius. The diagram below shows your bearing lines, estimated target, and error circle on the map.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Tips for a Better Fix</div>
+        <div class="benefits-item-desc">Spread your observers around the target — observers clustered together or bearing lines that run nearly parallel produce a weaker fix. The GDOP warning will alert you if your geometry is too weak to produce a reliable result. More observers generally means a tighter error radius.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Learn More modal ── -->
+<div id="learnMoreOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="learnMoreTitle">
+  <div class="auth-modal benefits-modal">
+    <button id="learnMoreCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <h2 id="learnMoreTitle" class="auth-title">Learn More</h2>
+
+    <div class="benefits-list">
+      <div class="benefits-item">
+        <div class="benefits-item-title">Algorithms</div>
+        <div class="benefits-item-desc">The algorithm selector changes the math used to compute the fix. Least Squares (OLS) is the default and works well in most situations. Premium algorithms like Maximum Likelihood and the M-Estimators are better when one of your bearings might be significantly off — they reduce the influence of outlier observations.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Toggling Observations</div>
+        <div class="benefits-item-desc">Use the toggle on each observer card to temporarily disable an observation without deleting it. Useful for testing how much a single bearing is affecting your result. Toggles are only available when you have more than 3 active observations — adding more than 3 requires a premium account.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Dark Mode</div>
+        <div class="benefits-item-desc">The theme button in the top right switches to a high-contrast light mode designed for outdoor use in bright conditions.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Saving Your Session</div>
+        <div class="benefits-item-desc">Your inputs are saved automatically as you type and restored when you reopen the tool. Use the Clear / Reset button to start a new session from scratch.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Your Account</div>
+        <div class="benefits-item-desc">Access account settings from the menu — manage your registered devices or change your password at any time.</div>
+      </div>
+      <div class="benefits-item">
+        <div class="benefits-item-title">Devices</div>
+        <div class="benefits-item-desc">Premium accounts can be used on up to 2 devices simultaneously. Each time you sign in on a new device it is registered to your account. If you sign in on a third device, the least recently used device is automatically removed. You can view and manage your registered devices at any time from Manage Account in the menu. If you remove the device you are currently using, you will be signed out automatically.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Benefits of Upgrading modal ── -->
 <div id="benefitsOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="benefitsTitle">
   <div class="auth-modal benefits-modal">
@@ -289,7 +355,8 @@
   <div id="drawerBenefitsDivider" class="drawer-divider hidden"></div>
 
   <!-- Always visible -->
-  <button id="drawerHowTo" class="drawer-item" type="button">How to Use</button>
+  <button id="drawerHowToTriangulation" class="drawer-item" type="button">Running a Triangulation Fix</button>
+  <button id="drawerLearnMore" class="drawer-item" type="button">Learn More</button>
 </nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

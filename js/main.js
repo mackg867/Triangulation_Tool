@@ -235,6 +235,22 @@ get('themeBtn').addEventListener('click', () => {
 // ── Auth event listeners ──────────────────────────────────────────────────────
 
 // Sign In button (header)
+// ── Triangulation Fix modal ──────────────────────────────────────────────────
+function _showTriangulationModal() {
+  get('triangulationOverlay').classList.remove('hidden');
+}
+function _hideTriangulationModal() {
+  get('triangulationOverlay').classList.add('hidden');
+}
+
+// ── Learn More modal ──────────────────────────────────────────────────────────
+function _showLearnMoreModal() {
+  get('learnMoreOverlay').classList.remove('hidden');
+}
+function _hideLearnMoreModal() {
+  get('learnMoreOverlay').classList.add('hidden');
+}
+
 // ── Benefits of Upgrading modal ──────────────────────────────────────────────
 function _showBenefitsModal() {
   get('benefitsOverlay').classList.remove('hidden');
@@ -268,7 +284,8 @@ get('drawerManageAccount').addEventListener('click', () => { _closeDrawer(); _sh
 get('drawerSignOut').addEventListener('click', () => { _closeDrawer(); _handleSignOut(); });
 get('drawerSignIn').addEventListener('click', () => { _closeDrawer(); _showAuthModal('signin'); });
 get('drawerBenefits').addEventListener('click', () => { _closeDrawer(); _showBenefitsModal(); });
-get('drawerHowTo').addEventListener('click', _closeDrawer);      // placeholder
+get('drawerHowToTriangulation').addEventListener('click', () => { _closeDrawer(); _showTriangulationModal(); });
+get('drawerLearnMore').addEventListener('click', () => { _closeDrawer(); _showLearnMoreModal(); });
 
 get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
 
@@ -293,6 +310,19 @@ if (get('changePasswordBtn')) {
 }
 
 
+
+// Triangulation Fix modal — close
+get('triangulationCloseBtn').addEventListener('click', _hideTriangulationModal);
+get('triangulationOverlay').addEventListener('click', e => {
+  if (e.target === get('triangulationOverlay')) _hideTriangulationModal();
+});
+
+// Learn More modal — close
+get('learnMoreCloseBtn').addEventListener('click', _hideLearnMoreModal);
+get('learnMoreOverlay').addEventListener('click', e => {
+  if (e.target === get('learnMoreOverlay')) _hideLearnMoreModal();
+});
+
 // Benefits modal — close
 get('benefitsCloseBtn').addEventListener('click', _hideBenefitsModal);
 get('benefitsOverlay').addEventListener('click', e => {
@@ -315,6 +345,8 @@ get('benefitsSignInBtn').addEventListener('click', () => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (get('navDrawer').classList.contains('open')) { _closeDrawer(); return; }
+    if (!get('triangulationOverlay').classList.contains('hidden')) { _hideTriangulationModal(); return; }
+    if (!get('learnMoreOverlay').classList.contains('hidden')) { _hideLearnMoreModal(); return; }
     if (!get('benefitsOverlay').classList.contains('hidden')) { _hideBenefitsModal(); return; }
     const acctOverlay = get('accountModalOverlay');
     if (acctOverlay && !acctOverlay.classList.contains('hidden')) {
