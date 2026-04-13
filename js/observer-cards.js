@@ -96,6 +96,10 @@ function applyEntitlementGates() {
   // ── Algorithm upgrade hint ──────────────────────────────────────
   get('algoUpgradeHint').classList.toggle('hidden', premium);
 
+  // ── Drawer: Benefits of Upgrading — hide once user is premium ────
+  get('drawerBenefits').classList.toggle('hidden', premium);
+  get('drawerBenefitsDivider').classList.toggle('hidden', premium);
+
   // ── Upgrade button visibility ────────────────────────────────────
   get('upgradeBtn').classList.toggle('hidden', premium);
 

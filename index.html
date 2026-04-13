@@ -17,10 +17,6 @@
     <h1>Pinpoint</h1>
   </div>
   <div class="header-actions">
-    <!-- Account badge — visible when logged in -->
-    <div id="accountBadge" class="account-badge hidden" aria-live="polite">
-<span id="lastVerifiedLabel" class="last-verified hidden"></span>
-    </div>
     <!-- Sign In — visible when logged out -->
     <button id="signInBtn" class="sign-in-btn" type="button" aria-label="Sign in to your account">Sign In</button>
     <button id="upgradeBtn" class="upgrade-btn" type="button"
@@ -234,6 +230,29 @@
     </p>
   </div>
 </div>
+
+<!-- ── Navigation Drawer ── -->
+<div id="drawerOverlay" class="drawer-overlay hidden"></div>
+<nav id="navDrawer" class="nav-drawer" aria-label="Navigation menu" aria-hidden="true">
+  <button id="drawerCloseBtn" class="drawer-close-btn" type="button" aria-label="Close menu">✕</button>
+
+  <!-- Account section — visible when signed in -->
+  <div id="drawerAccount" class="drawer-section hidden">
+    <span id="drawerEmail" class="drawer-email"></span>
+    <span id="lastVerifiedLabel" class="last-verified hidden"></span>
+    <div class="drawer-divider"></div>
+    <button id="drawerManageAccount" class="drawer-item" type="button">Manage Account</button>
+    <button id="drawerSignOut" class="drawer-item" type="button">Sign Out</button>
+    <div class="drawer-divider"></div>
+  </div>
+
+  <!-- Benefits of Upgrading — hidden once user is premium -->
+  <button id="drawerBenefits" class="drawer-item hidden" type="button">Benefits of Upgrading</button>
+  <div id="drawerBenefitsDivider" class="drawer-divider hidden"></div>
+
+  <!-- Always visible -->
+  <button id="drawerHowTo" class="drawer-item" type="button">How to Use</button>
+</nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <!-- Supabase JS SDK — pin to a specific version before going live -->

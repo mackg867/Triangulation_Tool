@@ -235,6 +235,31 @@ get('themeBtn').addEventListener('click', () => {
 // ── Auth event listeners ──────────────────────────────────────────────────────
 
 // Sign In button (header)
+// ── Navigation Drawer ─────────────────────────────────────────────────────────
+function _openDrawer() {
+  get('navDrawer').classList.add('open');
+  get('drawerOverlay').classList.add('open');
+  get('navDrawer').setAttribute('aria-hidden', 'false');
+  get('menuBtn').setAttribute('aria-expanded', 'true');
+}
+
+function _closeDrawer() {
+  get('navDrawer').classList.remove('open');
+  get('drawerOverlay').classList.remove('open');
+  get('navDrawer').setAttribute('aria-hidden', 'true');
+  get('menuBtn').setAttribute('aria-expanded', 'false');
+}
+
+get('menuBtn').addEventListener('click', _openDrawer);
+get('drawerCloseBtn').addEventListener('click', _closeDrawer);
+get('drawerOverlay').addEventListener('click', _closeDrawer);
+
+// Drawer menu items
+get('drawerManageAccount').addEventListener('click', () => { _closeDrawer(); _showAccountModal(); });
+get('drawerSignOut').addEventListener('click', () => { _closeDrawer(); _handleSignOut(); });
+get('drawerBenefits').addEventListener('click', _closeDrawer);   // placeholder
+get('drawerHowTo').addEventListener('click', _closeDrawer);      // placeholder
+
 get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
 
 // Sign Out button (account badge)
@@ -257,9 +282,10 @@ if (get('changePasswordBtn')) {
   get('changePasswordBtn').addEventListener('click', _changePassword);
 }
 
-// Escape key — extend existing keydown listener to also close account modal
+// Escape key — close drawer, account modal, or auth modal
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (get('navDrawer').classList.contains('open')) { _closeDrawer(); return; }
     const acctOverlay = get('accountModalOverlay');
     if (acctOverlay && !acctOverlay.classList.contains('hidden')) {
       _hideAccountModal();

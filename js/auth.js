@@ -4,14 +4,16 @@
 
 let _authMode = 'signin'; // 'signin' | 'signup'
 
-/** Show or hide the Sign In / account badge based on session state. */
+/** Show or hide header Sign In / drawer account section based on session state. */
 function _updateAccountUI(session) {
   const loggedIn = !!session;
-  get('accountBadge').classList.toggle('hidden', !loggedIn);
   get('signInBtn').classList.toggle('hidden', loggedIn);
+  get('drawerAccount').classList.toggle('hidden', !loggedIn);
   if (session) {
+    get('drawerEmail').textContent = session.user.email;
   } else {
-    // Clear the verified label on sign-out
+    // Clear email and verified label on sign-out
+    get('drawerEmail').textContent = '';
     const lbl = get('lastVerifiedLabel');
     if (lbl) { lbl.textContent = ''; lbl.classList.add('hidden'); }
   }
