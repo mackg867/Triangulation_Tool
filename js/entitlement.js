@@ -38,14 +38,9 @@ function _loadEntitlementCache(userId) {
   } catch (_) { return null; }
 }
 
-// DEV ONLY: null = use real entitlement; 'free' | 'premium' = forced override.
-// Remove (or keep null) before any public deployment.
-let _devTierOverride = null;
-
 /** Returns true when the user has an active premium entitlement. */
 function isPremium() {
-  if (_devTierOverride !== null) return _devTierOverride === 'premium';
-  return DEV_OVERRIDE || Entitlement.tier === 'premium';
+  return Entitlement.tier === 'premium';
 }
 
 /**

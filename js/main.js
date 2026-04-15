@@ -90,21 +90,6 @@ function compute() {
 
 
 // ================================================================
-//  DEV ONLY
-// ================================================================
-
-/** DEV ONLY: Switch between 'free' and 'premium' at runtime for testing.
- *  Call setDevTier(null) to restore real entitlement logic.
- *  Remove before going live. */
-function setDevTier(tier) {
-  _devTierOverride = tier;   // 'free' | 'premium' | null
-  _destroyMap();
-  applyEntitlementGates();
-  compute();
-}
-
-
-// ================================================================
 //  INIT
 // ================================================================
 
@@ -405,22 +390,3 @@ if (_supabase) {
   });
 }
 
-// ── DEV ONLY: Tier toggle radio buttons — REMOVE BEFORE GOING LIVE ──────────
-(function initDevPanel() {
-  const freeRadio    = get('devFreeRadio');
-  const premiumRadio = get('devPremiumRadio');
-  if (!freeRadio || !premiumRadio) return;
-
-  // Initialise radio state to match real entitlement
-  if (isPremium()) {
-    premiumRadio.checked = true;
-  } else {
-    freeRadio.checked = true;
-  }
-
-  [freeRadio, premiumRadio].forEach(radio => {
-    radio.addEventListener('change', () => {
-      setDevTier(radio.value);   // 'free' or 'premium'
-    });
-  });
-})();

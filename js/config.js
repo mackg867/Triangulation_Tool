@@ -17,13 +17,6 @@ const _supabase = (typeof supabase !== 'undefined' && !SUPABASE_URL.includes('YO
   : null;
 
 // ================================================================
-//  DEV OVERRIDE
-//  Set true locally to force premium features on without a backend.
-//  Must be false before any public deployment.
-// ================================================================
-const DEV_OVERRIDE = false;
-
-// ================================================================
 //  HELPERS
 // ================================================================
 const get = id  => document.getElementById(id);
