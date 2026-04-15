@@ -137,8 +137,8 @@ get('upgradeBtn').addEventListener('click', _startCheckout);
   banner.textContent = 'Confirming your payment…';
   document.body.appendChild(banner);
 
-  const MAX_ATTEMPTS = 5;
-  const INTERVAL_MS  = 2000;
+  const MAX_ATTEMPTS = 10;
+  const INTERVAL_MS  = 2500;
   let attempts = 0;
 
   async function poll() {
@@ -153,13 +153,8 @@ get('upgradeBtn').addEventListener('click', _startCheckout);
       banner.remove();
       console.log('[Checkout] Payment confirmed — premium unlocked.');
     } else if (attempts >= MAX_ATTEMPTS) {
-      banner.remove();
-      _showAuthModal('signin');
-      _showAuthMsg(
-        'Your payment was received but is still processing. Please refresh ' +
-        'the page in a moment — if the issue persists, contact support.',
-        'info'
-      );
+      banner.textContent = 'Payment received — still processing. Refresh in a moment to unlock premium.';
+      banner.style.background = '#2a6496';
     } else {
       setTimeout(poll, INTERVAL_MS);
     }
