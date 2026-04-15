@@ -126,17 +126,47 @@ get('upgradeBtn').addEventListener('click', _startCheckout);
   // Clean the query string from the URL immediately
   history.replaceState({}, '', window.location.pathname);
 
-  if (result === 'success') {
-    // Re-sync entitlement — webhook should have written the row by now.
-    // Small delay gives the webhook a moment to complete if it's still in flight.
-    setTimeout(async () => {
-      await _syncEntitlement();
-      if (isPremium()) {
-        console.log('[Checkout] Payment confirmed — premium unlocked.');
-      }
-    }, 1500);
-  }
+  if (result !== 'success') return;
   // Cancelled: no action needed — user just lands back on the free tier.
+
+  // Show a slim banner while polling for the webhook to write the entitlement row.
+  // Webhooks can occasionally be delayed; a single fixed timeout risks a false
+  // "payment failed" impression. Instead we poll every 2s (max 5 attempts).
+  const banner = document.createElement('div');
+  banner.id = 'paymentBanner';
+  banner.textContent = 'Confirming your payment…';
+  document.body.appendChild(banner);
+
+  const MAX_ATTEMPTS = 5;
+  const INTERVAL_MS  = 2000;
+  let attempts = 0;
+
+  async function poll() {
+    if (!_supabase) { banner.remove(); return; }
+    const { data: { session } } = await _supabase.auth.getSession();
+    if (!session)   { banner.remove(); return; }
+
+    attempts++;
+    await _fetchEntitlement(session);
+
+    if (isPremium()) {
+      banner.remove();
+      console.log('[Checkout] Payment confirmed — premium unlocked.');
+    } else if (attempts >= MAX_ATTEMPTS) {
+      banner.remove();
+      _showAuthModal('signin');
+      _showAuthMsg(
+        'Your payment was received but is still processing. Please refresh ' +
+        'the page in a moment — if the issue persists, contact support.',
+        'info'
+      );
+    } else {
+      setTimeout(poll, INTERVAL_MS);
+    }
+  }
+
+  // Give the webhook a moment before the first attempt.
+  setTimeout(poll, 1500);
 })();
 
 // GPS setup
@@ -245,6 +275,34 @@ function _hideBenefitsModal() {
   get('benefitsOverlay').classList.add('hidden');
 }
 
+// ── Add to Homescreen modal ───────────────────────────────────────────────────
+function _detectPlatform() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  if (/Android/i.test(ua))          return 'android';
+  if (!/Mobi|Android/i.test(ua))    return 'desktop';
+  return 'unknown';
+}
+
+function _showHomescreenModal() {
+  const platform = _detectPlatform();
+  const sectionMap = {
+    ios:     'homescreenIos',
+    android: 'homescreenAndroid',
+    desktop: 'homescreenDesktop',
+    unknown: 'homescreenFallback',
+  };
+  ['homescreenIos', 'homescreenAndroid', 'homescreenDesktop', 'homescreenFallback'].forEach(id => {
+    get(id).classList.add('hidden');
+  });
+  get(sectionMap[platform] || 'homescreenFallback').classList.remove('hidden');
+  get('homescreenOverlay').classList.remove('hidden');
+}
+
+function _hideHomescreenModal() {
+  get('homescreenOverlay').classList.add('hidden');
+}
+
 // ── Navigation Drawer ─────────────────────────────────────────────────────────
 function _openDrawer() {
   get('navDrawer').classList.add('open');
@@ -271,6 +329,7 @@ get('drawerSignIn').addEventListener('click', () => { _closeDrawer(); _showAuthM
 get('drawerBenefits').addEventListener('click', () => { _closeDrawer(); _showBenefitsModal(); });
 get('drawerHowToTriangulation').addEventListener('click', () => { _closeDrawer(); _showTriangulationModal(); });
 get('drawerLearnMore').addEventListener('click', () => { _closeDrawer(); _showLearnMoreModal(); });
+get('drawerHomescreen').addEventListener('click', () => { _closeDrawer(); _showHomescreenModal(); });
 
 get('signInBtn').addEventListener('click', () => _showAuthModal('signin'));
 
@@ -314,6 +373,12 @@ get('benefitsOverlay').addEventListener('click', e => {
   if (e.target === get('benefitsOverlay')) _hideBenefitsModal();
 });
 
+// Homescreen modal — close
+get('homescreenCloseBtn').addEventListener('click', _hideHomescreenModal);
+get('homescreenOverlay').addEventListener('click', e => {
+  if (e.target === get('homescreenOverlay')) _hideHomescreenModal();
+});
+
 // Benefits modal — upgrade button
 get('benefitsUpgradeBtn').addEventListener('click', () => {
   _hideBenefitsModal();
@@ -333,6 +398,7 @@ document.addEventListener('keydown', e => {
     if (!get('triangulationOverlay').classList.contains('hidden')) { _hideTriangulationModal(); return; }
     if (!get('learnMoreOverlay').classList.contains('hidden')) { _hideLearnMoreModal(); return; }
     if (!get('benefitsOverlay').classList.contains('hidden')) { _hideBenefitsModal(); return; }
+    if (!get('homescreenOverlay').classList.contains('hidden')) { _hideHomescreenModal(); return; }
     const acctOverlay = get('accountModalOverlay');
     if (acctOverlay && !acctOverlay.classList.contains('hidden')) {
       _hideAccountModal();

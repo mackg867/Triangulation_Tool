@@ -312,15 +312,118 @@
       <label for="authEmail">Email</label>
       <input type="email" id="authEmailInput" placeholder="your@email.com" autocomplete="email">
     </div>
+    <div class="field hidden" id="authConfirmEmailField">
+      <label for="authConfirmEmailInput">Confirm Email</label>
+      <input type="email" id="authConfirmEmailInput" placeholder="your@email.com" autocomplete="email">
+    </div>
     <div class="field">
       <label for="authPassword">Password</label>
       <input type="password" id="authPasswordInput" placeholder="Password" autocomplete="current-password">
+    </div>
+    <div class="field hidden" id="authConfirmPasswordField">
+      <label for="authConfirmPasswordInput">Confirm Password</label>
+      <input type="password" id="authConfirmPasswordInput" placeholder="Repeat password" autocomplete="new-password">
     </div>
     <button id="authSubmitBtn" class="btn-auth-submit" type="button">Sign In</button>
     <p class="auth-toggle-wrap">
       <span id="authToggleLabel">Don't have an account?</span>
       <button id="authToggleBtn" class="auth-toggle-btn" type="button">Create one</button>
     </p>
+  </div>
+</div>
+
+<!-- ── Add to Homescreen modal ── -->
+<div id="homescreenOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="homescreenTitle">
+  <div class="auth-modal benefits-modal">
+    <button id="homescreenCloseBtn" class="auth-close-btn" type="button" aria-label="Close">✕</button>
+    <h2 id="homescreenTitle" class="auth-title">Add to Homescreen</h2>
+
+    <div class="benefits-list">
+
+      <!-- Always shown: why bother -->
+      <div class="benefits-item">
+        <div class="benefits-item-title">Why Add Pinpoint to Your Homescreen?</div>
+        <div class="benefits-item-desc">Adding Pinpoint to your home screen gives you one-tap access from any device — no opening a browser and navigating back each time. The app opens full-screen, removing browser toolbars so your map and results have more room. It also loads faster on repeat visits since your device caches the app locally.</div>
+      </div>
+
+      <!-- iOS instructions -->
+      <div id="homescreenIos" class="hidden">
+        <div class="benefits-item">
+          <div class="benefits-item-title">iPhone &amp; iPad — Safari</div>
+          <div class="benefits-item-desc">Pinpoint can be added to your home screen using Safari. If you're currently in Chrome or another browser, copy this page's URL, open it in Safari, and continue from there.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Step 1</div>
+          <div class="benefits-item-desc">Tap the <strong>Share</strong> button — a box with an arrow pointing up. On iPhone it's at the bottom of the screen; on iPad it's near the top.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Step 2</div>
+          <div class="benefits-item-desc">Scroll down in the Share sheet and tap <strong>Add to Home Screen</strong>.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Step 3</div>
+          <div class="benefits-item-desc">Edit the name if you'd like, then tap <strong>Add</strong> in the top right. Pinpoint will appear on your home screen like any other app.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Having Trouble?</div>
+          <div class="benefits-item-desc">If these steps don't match your screen, search: <em>"add to home screen iPhone Safari"</em> — results will reflect your exact iOS version.</div>
+        </div>
+      </div>
+
+      <!-- Android instructions -->
+      <div id="homescreenAndroid" class="hidden">
+        <div class="benefits-item">
+          <div class="benefits-item-title">Android</div>
+          <div class="benefits-item-desc">Steps vary slightly by browser.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Chrome</div>
+          <div class="benefits-item-desc">Tap the <strong>three-dot menu (⋮)</strong> in the top right → <strong>Add to Home screen</strong> or <strong>Install app</strong> → <strong>Add</strong>.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Samsung Internet</div>
+          <div class="benefits-item-desc">Tap the <strong>menu icon</strong> at the bottom of the screen → <strong>Add page to</strong> → <strong>Home screen</strong> → <strong>Add</strong>.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Firefox</div>
+          <div class="benefits-item-desc">Tap the <strong>three-dot menu</strong> → <strong>Install</strong> or <strong>Add to Home screen</strong>.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Having Trouble?</div>
+          <div class="benefits-item-desc">If your browser isn't listed or the steps look different, search: <em>"add to home screen Android [your browser name]"</em> — for example, <em>"add to home screen Android Chrome"</em>.</div>
+        </div>
+      </div>
+
+      <!-- Desktop instructions -->
+      <div id="homescreenDesktop" class="hidden">
+        <div class="benefits-item">
+          <div class="benefits-item-title">Desktop — Chrome or Edge</div>
+          <div class="benefits-item-desc">Look for the <strong>install icon</strong> in the address bar — it appears as a small monitor with a downward arrow. Click it and follow the prompts. Pinpoint will open in its own window without browser tabs or toolbars.</div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Having Trouble?</div>
+          <div class="benefits-item-desc">The install icon only appears in Chrome and Edge. Safari on Mac added basic support in macOS Sonoma — search <em>"install web app Safari Mac"</em> for instructions. Firefox does not currently support installation.</div>
+        </div>
+      </div>
+
+      <!-- Fallback instructions -->
+      <div id="homescreenFallback" class="hidden">
+        <div class="benefits-item">
+          <div class="benefits-item-title">Instructions by Device</div>
+          <div class="benefits-item-desc">
+            The steps depend on your device and browser:<br><br>
+            <strong>iPhone/iPad (Safari):</strong> Share button → Add to Home Screen<br>
+            <strong>Android (Chrome):</strong> Three-dot menu (⋮) → Add to Home screen<br>
+            <strong>Desktop (Chrome/Edge):</strong> Install icon in the address bar
+          </div>
+        </div>
+        <div class="benefits-item">
+          <div class="benefits-item-title">Having Trouble?</div>
+          <div class="benefits-item-desc">Search <em>"add to home screen"</em> followed by your browser and device — for example, <em>"add to home screen iPhone Safari"</em> or <em>"add to home screen Android Chrome"</em>.</div>
+        </div>
+      </div>
+
+    </div>
   </div>
 </div>
 
@@ -350,6 +453,7 @@
   <!-- Always visible -->
   <button id="drawerHowToTriangulation" class="drawer-item" type="button">Running a Triangulation Fix</button>
   <button id="drawerLearnMore" class="drawer-item" type="button">Learn More</button>
+  <button id="drawerHomescreen" class="drawer-item" type="button">Add to Homescreen</button>
 </nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

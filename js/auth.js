@@ -54,8 +54,10 @@ function _updateVerifiedLabel() {
 function _showAuthModal(mode = 'signin') {
   _setAuthMode(mode);
   _clearAuthMsg();
-  get('authEmailInput').value    = '';
-  get('authPasswordInput').value = '';
+  get('authEmailInput').value           = '';
+  get('authConfirmEmailInput').value    = '';
+  get('authPasswordInput').value        = '';
+  get('authConfirmPasswordInput').value = '';
   get('authOverlay').classList.remove('hidden');
   setTimeout(() => get('authEmailInput').focus(), 60);
 }
@@ -73,6 +75,11 @@ function _setAuthMode(mode) {
   get('authToggleLabel').textContent  = isSignIn ? "Don't have an account?" : 'Already have an account?';
   get('authToggleBtn').textContent    = isSignIn ? 'Create one' : 'Sign in';
   get('authPasswordInput').autocomplete = isSignIn ? 'current-password' : 'new-password';
+  // Show confirm fields only on sign-up; clear them whenever the mode switches
+  get('authConfirmEmailField').classList.toggle('hidden', isSignIn);
+  get('authConfirmPasswordField').classList.toggle('hidden', isSignIn);
+  get('authConfirmEmailInput').value    = '';
+  get('authConfirmPasswordInput').value = '';
 }
 
 function _showAuthMsg(text, type = 'error') {
@@ -97,6 +104,19 @@ async function _handleAuthSubmit() {
   if (!email || !password) {
     _showAuthMsg('Please enter your email and password.');
     return;
+  }
+
+  if (_authMode === 'signup') {
+    const confirmEmail    = get('authConfirmEmailInput').value.trim();
+    const confirmPassword = get('authConfirmPasswordInput').value;
+    if (email !== confirmEmail) {
+      _showAuthMsg('Email addresses do not match.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      _showAuthMsg('Passwords do not match.');
+      return;
+    }
   }
 
   btn.disabled    = true;

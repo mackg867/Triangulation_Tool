@@ -902,6 +902,23 @@
       color: var(--accent);
     }
     .auth-msg.hidden { display: none; }
+
+    /* ── Payment confirmation banner ── */
+    #paymentBanner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9000;
+      background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+      border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      color: var(--accent);
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 10px 16px;
+      pointer-events: none;
+    }
     .auth-modal .field { margin-bottom: 14px; }
     .auth-modal .field label {
       display: block;
